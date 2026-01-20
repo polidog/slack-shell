@@ -5,15 +5,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/polidog/slack-tui/internal/config"
-	"github.com/polidog/slack-tui/internal/keymap"
 	"github.com/polidog/slack-tui/internal/oauth"
+	"github.com/polidog/slack-tui/internal/shell"
 	"github.com/polidog/slack-tui/internal/slack"
-	"github.com/polidog/slack-tui/internal/ui"
 )
 
 type App struct {
 	config         *config.Config
-	keymap         *keymap.Keymap
 	slackClient    *slack.Client
 	realtimeClient *slack.RealtimeClient
 	program        *tea.Program
@@ -36,12 +34,8 @@ func New() (*App, error) {
 		return nil, fmt.Errorf("Slackクライアントの作成に失敗しました: %w", err)
 	}
 
-	// Get keymap with user customizations
-	km := cfg.GetKeymap()
-
 	return &App{
 		config:      cfg,
-		keymap:      km,
 		slackClient: slackClient,
 	}, nil
 }
@@ -103,7 +97,7 @@ func getToken(cfg *config.Config) (string, error) {
 }
 
 func (a *App) Run() error {
-	model := ui.NewModel(a.slackClient, a.keymap)
+	model := shell.NewModel(a.slackClient)
 
 	// Set up realtime client if app token is available
 	if a.config.AppToken != "" {
@@ -124,12 +118,11 @@ func (a *App) Run() error {
 		go func() {
 			if err := a.realtimeClient.Start(); err != nil {
 				// Handle error silently for now
-				// The UI will show disconnected status
 			}
 		}()
 	}
 
-	a.program = tea.NewProgram(model, tea.WithAltScreen())
+	a.program = tea.NewProgram(model)
 
 	_, err := a.program.Run()
 	return err
