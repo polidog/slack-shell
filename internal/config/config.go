@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/polidog/slack-tui/internal/keymap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -19,6 +20,9 @@ type Config struct {
 
 	// OAuth settings
 	RedirectPort int `yaml:"redirect_port"`
+
+	// Keybindings
+	Keybindings *keymap.KeyBindings `yaml:"keybindings"`
 }
 
 type Credentials struct {
@@ -81,11 +85,24 @@ func Load() (*Config, error) {
 				if fileCfg.RedirectPort != 0 {
 					cfg.RedirectPort = fileCfg.RedirectPort
 				}
+				// Merge keybindings
+				if fileCfg.Keybindings != nil {
+					cfg.Keybindings = fileCfg.Keybindings
+				}
 			}
 		}
 	}
 
 	return cfg, nil
+}
+
+// GetKeymap returns a Keymap with user customizations merged with defaults
+func (c *Config) GetKeymap() *keymap.Keymap {
+	bindings := keymap.DefaultKeyBindings()
+	if c.Keybindings != nil {
+		bindings.Merge(c.Keybindings)
+	}
+	return keymap.New(bindings)
 }
 
 func LoadCredentials() (*Credentials, error) {

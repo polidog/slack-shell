@@ -12,6 +12,7 @@ GoとBubble Teaで作られたターミナルベースのSlackクライアント
 - 🧵 スレッドの表示と返信
 - ⚡ Socket Modeによるリアルタイム更新（オプション）
 - 🔐 **OAuth認証対応** - ブラウザで簡単ログイン
+- ⌨️ **Vimライクなキーバインド** - カスタマイズ可能
 
 ## クイックスタート
 
@@ -128,29 +129,34 @@ export SLACK_CLIENT_SECRET="あなたのClient Secret"
 3. **Tab** でスレッドパネルにフォーカス
 4. **Esc** でスレッドを閉じる
 
-## キーバインド一覧
+## キーバインド一覧（デフォルト）
+
+すべてのキーバインドは設定ファイルでカスタマイズ可能です。
 
 ### 移動
 
-| キー | 操作 |
-|------|------|
-| `j` / `↓` | 下に移動 |
-| `k` / `↑` | 上に移動 |
-| `g` | 先頭に移動 |
-| `G` | 末尾に移動 |
-| `Ctrl+u` / `PgUp` | ページアップ |
-| `Ctrl+d` / `PgDown` | ページダウン |
+| キー | 操作 | アクション名 |
+|------|------|-------------|
+| `j` / `↓` | 下に移動 | `down` |
+| `k` / `↑` | 上に移動 | `up` |
+| `g` / `Home` | 先頭に移動 | `top` |
+| `G` / `End` | 末尾に移動 | `bottom` |
+| `Ctrl+u` | 半ページアップ | `half_up` |
+| `Ctrl+d` | 半ページダウン | `half_down` |
+| `Ctrl+b` / `PgUp` | ページアップ | `page_up` |
+| `Ctrl+f` / `PgDown` | ページダウン | `page_down` |
 
 ### 操作
 
-| キー | 操作 |
-|------|------|
-| `Tab` | パネル切り替え（サイドバー ↔ メッセージ ↔ スレッド） |
-| `Enter` | チャンネル選択 / スレッド展開 |
-| `i` | 入力モードに入る |
-| `r` | 選択中のメッセージにスレッド返信 |
-| `Esc` | モード終了（入力/スレッド） |
-| `q` / `Ctrl+C` | アプリ終了 |
+| キー | 操作 | アクション名 |
+|------|------|-------------|
+| `Tab` / `l` | 次のパネルへ | `next_panel` |
+| `Shift+Tab` / `h` | 前のパネルへ | `prev_panel` |
+| `Enter` / `o` | チャンネル選択 / スレッド展開 | `select` |
+| `i` / `a` | 入力モードに入る | `input_mode` |
+| `r` | 選択中のメッセージにスレッド返信 | `reply` |
+| `Esc` | モード終了（入力/スレッド） | `cancel` |
+| `q` / `Ctrl+C` | アプリ終了 | `quit` |
 
 ## 認証方法
 
@@ -217,7 +223,65 @@ app_token: xapp-your-app-token
 
 # コールバックポート（デフォルト: 8080）
 redirect_port: 8080
+
+# キーバインド設定（オプション）
+keybindings:
+  up: ["k", "up"]
+  down: ["j", "down"]
+  top: ["g", "home"]
+  bottom: ["G", "end"]
+  page_up: ["ctrl+b", "pgup"]
+  page_down: ["ctrl+f", "pgdown"]
+  half_up: ["ctrl+u"]
+  half_down: ["ctrl+d"]
+  next_panel: ["tab", "l"]
+  prev_panel: ["shift+tab", "h"]
+  select: ["enter", "o"]
+  input_mode: ["i", "a"]
+  reply: ["r"]
+  cancel: ["esc"]
+  quit: ["q", "ctrl+c"]
+  send: ["enter"]
 ```
+
+## キーバインドのカスタマイズ
+
+デフォルトでVimライクなキーバインドが設定されています。設定ファイルで自由にカスタマイズできます。
+
+### 設定例
+
+#### Emacsライクにする場合
+```yaml
+keybindings:
+  up: ["ctrl+p", "up"]
+  down: ["ctrl+n", "down"]
+  page_up: ["alt+v", "pgup"]
+  page_down: ["ctrl+v", "pgdown"]
+  next_panel: ["ctrl+x o", "tab"]
+  cancel: ["ctrl+g", "esc"]
+```
+
+#### 矢印キーのみ使用
+```yaml
+keybindings:
+  up: ["up"]
+  down: ["down"]
+  top: ["home"]
+  bottom: ["end"]
+  next_panel: ["tab"]
+  prev_panel: ["shift+tab"]
+```
+
+### 使用可能なキー
+
+| キー | 記法 |
+|------|------|
+| 通常キー | `a`, `b`, `1`, `/` など |
+| 矢印キー | `up`, `down`, `left`, `right` |
+| 特殊キー | `enter`, `esc`, `tab`, `space`, `backspace` |
+| ページキー | `pgup`, `pgdown`, `home`, `end` |
+| 修飾キー | `ctrl+x`, `alt+x`, `shift+x` |
+| 組み合わせ | `ctrl+shift+x` |
 
 ## トラブルシューティング
 

@@ -7,11 +7,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/polidog/slack-tui/internal/keymap"
 	"github.com/polidog/slack-tui/internal/slack"
 	"github.com/polidog/slack-tui/internal/ui/styles"
 )
 
 type MessagesModel struct {
+	keymap        *keymap.Keymap
 	messages      []slack.Message
 	selectedIndex int
 	scrollOffset  int
@@ -22,8 +24,9 @@ type MessagesModel struct {
 	channelName   string
 }
 
-func NewMessagesModel() MessagesModel {
+func NewMessagesModel(km *keymap.Keymap) MessagesModel {
 	return MessagesModel{
+		keymap:    km,
 		messages:  []slack.Message{},
 		userCache: make(map[string]string),
 	}
@@ -40,16 +43,14 @@ func (m MessagesModel) Update(msg tea.Msg) (MessagesModel, tea.Cmd) {
 			return m, nil
 		}
 
-		switch msg.String() {
-		case "up", "k":
+		if m.keymap.MatchKey(msg, keymap.ActionUp) {
 			if m.selectedIndex > 0 {
 				m.selectedIndex--
 				if m.selectedIndex < m.scrollOffset {
 					m.scrollOffset = m.selectedIndex
 				}
 			}
-
-		case "down", "j":
+		} else if m.keymap.MatchKey(msg, keymap.ActionDown) {
 			if m.selectedIndex < len(m.messages)-1 {
 				m.selectedIndex++
 				visibleLines := m.height - 4 // Account for borders and header
@@ -57,21 +58,16 @@ func (m MessagesModel) Update(msg tea.Msg) (MessagesModel, tea.Cmd) {
 					m.scrollOffset = m.selectedIndex - visibleLines + 1
 				}
 			}
-
-		case "g":
-			// Go to top
+		} else if m.keymap.MatchKey(msg, keymap.ActionTop) {
 			m.selectedIndex = 0
 			m.scrollOffset = 0
-
-		case "G":
-			// Go to bottom
+		} else if m.keymap.MatchKey(msg, keymap.ActionBottom) {
 			m.selectedIndex = len(m.messages) - 1
 			visibleLines := m.height - 4
 			if len(m.messages) > visibleLines {
 				m.scrollOffset = len(m.messages) - visibleLines
 			}
-
-		case "pgup", "ctrl+u":
+		} else if m.keymap.MatchKey(msg, keymap.ActionHalfUp) {
 			jump := m.height / 2
 			m.selectedIndex -= jump
 			if m.selectedIndex < 0 {
@@ -81,9 +77,28 @@ func (m MessagesModel) Update(msg tea.Msg) (MessagesModel, tea.Cmd) {
 			if m.scrollOffset < 0 {
 				m.scrollOffset = 0
 			}
-
-		case "pgdown", "ctrl+d":
+		} else if m.keymap.MatchKey(msg, keymap.ActionHalfDown) {
 			jump := m.height / 2
+			m.selectedIndex += jump
+			if m.selectedIndex >= len(m.messages) {
+				m.selectedIndex = len(m.messages) - 1
+			}
+			visibleLines := m.height - 4
+			if m.selectedIndex >= m.scrollOffset+visibleLines {
+				m.scrollOffset = m.selectedIndex - visibleLines + 1
+			}
+		} else if m.keymap.MatchKey(msg, keymap.ActionPageUp) {
+			jump := m.height - 4
+			m.selectedIndex -= jump
+			if m.selectedIndex < 0 {
+				m.selectedIndex = 0
+			}
+			m.scrollOffset -= jump
+			if m.scrollOffset < 0 {
+				m.scrollOffset = 0
+			}
+		} else if m.keymap.MatchKey(msg, keymap.ActionPageDown) {
+			jump := m.height - 4
 			m.selectedIndex += jump
 			if m.selectedIndex >= len(m.messages) {
 				m.selectedIndex = len(m.messages) - 1

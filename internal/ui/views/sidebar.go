@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/polidog/slack-tui/internal/keymap"
 	"github.com/polidog/slack-tui/internal/slack"
 	"github.com/polidog/slack-tui/internal/ui/styles"
 )
@@ -18,6 +19,7 @@ const (
 )
 
 type SidebarModel struct {
+	keymap        *keymap.Keymap
 	channels      []slack.Channel
 	dms           []slack.Channel
 	selectedIndex int
@@ -28,8 +30,9 @@ type SidebarModel struct {
 	userCache     map[string]string // userID -> userName
 }
 
-func NewSidebarModel() SidebarModel {
+func NewSidebarModel(km *keymap.Keymap) SidebarModel {
 	return SidebarModel{
+		keymap:    km,
 		channels:  []slack.Channel{},
 		dms:       []slack.Channel{},
 		userCache: make(map[string]string),
@@ -47,8 +50,7 @@ func (m SidebarModel) Update(msg tea.Msg) (SidebarModel, tea.Cmd) {
 			return m, nil
 		}
 
-		switch msg.String() {
-		case "up", "k":
+		if m.keymap.MatchKey(msg, keymap.ActionUp) {
 			m.selectedIndex--
 			if m.selectedIndex < 0 {
 				// Move to previous section
@@ -59,8 +61,7 @@ func (m SidebarModel) Update(msg tea.Msg) (SidebarModel, tea.Cmd) {
 					m.selectedIndex = 0
 				}
 			}
-
-		case "down", "j":
+		} else if m.keymap.MatchKey(msg, keymap.ActionDown) {
 			currentList := m.getCurrentList()
 			m.selectedIndex++
 			if m.selectedIndex >= len(currentList) {
@@ -72,15 +73,15 @@ func (m SidebarModel) Update(msg tea.Msg) (SidebarModel, tea.Cmd) {
 					m.selectedIndex = len(currentList) - 1
 				}
 			}
-
-		case "tab":
-			// Switch between sections
-			if m.section == SectionChannels && len(m.dms) > 0 {
+		} else if m.keymap.MatchKey(msg, keymap.ActionTop) {
+			m.section = SectionChannels
+			m.selectedIndex = 0
+		} else if m.keymap.MatchKey(msg, keymap.ActionBottom) {
+			if len(m.dms) > 0 {
 				m.section = SectionDMs
-				m.selectedIndex = 0
-			} else if m.section == SectionDMs && len(m.channels) > 0 {
-				m.section = SectionChannels
-				m.selectedIndex = 0
+				m.selectedIndex = len(m.dms) - 1
+			} else if len(m.channels) > 0 {
+				m.selectedIndex = len(m.channels) - 1
 			}
 		}
 	}

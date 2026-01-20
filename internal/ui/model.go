@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/polidog/slack-tui/internal/keymap"
 	"github.com/polidog/slack-tui/internal/slack"
 	"github.com/polidog/slack-tui/internal/ui/styles"
 	"github.com/polidog/slack-tui/internal/ui/views"
@@ -22,6 +23,7 @@ const (
 type Model struct {
 	slackClient    *slack.Client
 	realtimeClient *slack.RealtimeClient
+	keymap         *keymap.Keymap
 
 	sidebar  views.SidebarModel
 	messages views.MessagesModel
@@ -77,13 +79,14 @@ type ErrorMsg struct {
 	Err error
 }
 
-func NewModel(client *slack.Client) Model {
+func NewModel(client *slack.Client, km *keymap.Keymap) Model {
 	return Model{
 		slackClient: client,
-		sidebar:     views.NewSidebarModel(),
-		messages:    views.NewMessagesModel(),
+		keymap:      km,
+		sidebar:     views.NewSidebarModel(km),
+		messages:    views.NewMessagesModel(km),
 		input:       views.NewInputModel(),
-		thread:      views.NewThreadModel(),
+		thread:      views.NewThreadModel(km),
 		focus:       FocusSidebar,
 		userCache:   make(map[string]string),
 		connected:   true,
@@ -107,26 +110,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateLayout()
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			if m.focus != FocusInput {
-				return m, tea.Quit
-			}
+		// Force quit always works
+		if m.keymap.MatchKey(msg, keymap.ActionForceQuit) {
+			return m, tea.Quit
+		}
 
-		case "tab":
-			if m.focus != FocusInput {
-				m.cycleFocus()
-			}
-
-		case "enter":
-			if m.focus == FocusInput && m.input.Value() != "" {
+		// Handle keys based on current focus
+		switch m.focus {
+		case FocusInput:
+			// In input mode, only handle submit and cancel
+			if m.keymap.MatchKey(msg, keymap.ActionSubmit) && m.input.Value() != "" {
 				cmds = append(cmds, m.sendMessage())
-			} else if m.focus == FocusMessages {
-				selectedMsg := m.messages.GetSelectedMessage()
-				if selectedMsg != nil && (selectedMsg.ReplyCount > 0 || selectedMsg.ThreadTS != "") {
-					cmds = append(cmds, m.loadThread(selectedMsg))
-				}
-			} else if m.focus == FocusSidebar {
+			} else if m.keymap.MatchKey(msg, keymap.ActionCancel) {
+				m.focus = FocusMessages
+				m.updateFocus()
+			}
+
+		case FocusSidebar:
+			if m.keymap.MatchKey(msg, keymap.ActionSelect) {
 				selectedChannel := m.sidebar.GetSelectedChannel()
 				if selectedChannel != nil {
 					m.currentChannelID = selectedChannel.ID
@@ -135,31 +136,65 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.focus = FocusMessages
 					m.updateFocus()
 				}
-			}
-
-		case "esc":
-			if m.thread.IsVisible() {
-				m.thread.Hide()
+			} else if m.keymap.MatchKey(msg, keymap.ActionNextPanel) {
 				m.focus = FocusMessages
 				m.updateFocus()
-			} else if m.focus == FocusInput {
-				m.focus = FocusMessages
-				m.updateFocus()
+			} else if m.keymap.MatchKey(msg, keymap.ActionQuit) {
+				return m, tea.Quit
 			}
 
-		case "i":
-			if m.focus != FocusInput {
+		case FocusMessages:
+			if m.keymap.MatchKey(msg, keymap.ActionSelect, keymap.ActionOpenThread) {
+				selectedMsg := m.messages.GetSelectedMessage()
+				if selectedMsg != nil && (selectedMsg.ReplyCount > 0 || selectedMsg.ThreadTS != "") {
+					cmds = append(cmds, m.loadThread(selectedMsg))
+				}
+			} else if m.keymap.MatchKey(msg, keymap.ActionInputMode) {
 				m.focus = FocusInput
+				m.input.SetPlaceholder("Type a message...")
 				m.updateFocus()
-			}
-
-		case "r":
-			if m.focus == FocusMessages {
+			} else if m.keymap.MatchKey(msg, keymap.ActionReply) {
 				selectedMsg := m.messages.GetSelectedMessage()
 				if selectedMsg != nil {
 					cmds = append(cmds, m.loadThread(selectedMsg))
 					m.input.SetPlaceholder("Reply in thread...")
 				}
+			} else if m.keymap.MatchKey(msg, keymap.ActionNextPanel) {
+				if m.thread.IsVisible() {
+					m.focus = FocusThread
+				} else {
+					m.focus = FocusSidebar
+				}
+				m.updateFocus()
+			} else if m.keymap.MatchKey(msg, keymap.ActionPrevPanel) {
+				m.focus = FocusSidebar
+				m.updateFocus()
+			} else if m.keymap.MatchKey(msg, keymap.ActionBack) {
+				m.focus = FocusSidebar
+				m.updateFocus()
+			} else if m.keymap.MatchKey(msg, keymap.ActionQuit) {
+				return m, tea.Quit
+			}
+
+		case FocusThread:
+			if m.keymap.MatchKey(msg, keymap.ActionInputMode) {
+				m.focus = FocusInput
+				m.input.SetPlaceholder("Reply in thread...")
+				m.updateFocus()
+			} else if m.keymap.MatchKey(msg, keymap.ActionBack, keymap.ActionCloseThread) {
+				m.thread.Hide()
+				m.focus = FocusMessages
+				m.updateFocus()
+			} else if m.keymap.MatchKey(msg, keymap.ActionNextPanel) {
+				m.focus = FocusSidebar
+				m.updateFocus()
+			} else if m.keymap.MatchKey(msg, keymap.ActionPrevPanel) {
+				m.focus = FocusMessages
+				m.updateFocus()
+			} else if m.keymap.MatchKey(msg, keymap.ActionQuit) {
+				m.thread.Hide()
+				m.focus = FocusMessages
+				m.updateFocus()
 			}
 		}
 
@@ -341,27 +376,6 @@ func (m *Model) updateFocus() {
 	m.thread.SetFocused(m.focus == FocusThread)
 }
 
-func (m *Model) cycleFocus() {
-	if m.thread.IsVisible() {
-		switch m.focus {
-		case FocusSidebar:
-			m.focus = FocusMessages
-		case FocusMessages:
-			m.focus = FocusThread
-		case FocusThread:
-			m.focus = FocusSidebar
-		}
-	} else {
-		switch m.focus {
-		case FocusSidebar:
-			m.focus = FocusMessages
-		case FocusMessages:
-			m.focus = FocusSidebar
-		}
-	}
-	m.updateFocus()
-}
-
 func (m Model) renderStatusBar() string {
 	statusStyle := styles.StatusConnectedStyle
 	statusIcon := "●"
@@ -371,11 +385,13 @@ func (m Model) renderStatusBar() string {
 
 	status := statusStyle.Render(statusIcon) + " " + m.statusMessage
 
-	help := styles.HelpKeyStyle.Render("tab") + styles.HelpStyle.Render(":switch") + " " +
-		styles.HelpKeyStyle.Render("enter") + styles.HelpStyle.Render(":select") + " " +
-		styles.HelpKeyStyle.Render("i") + styles.HelpStyle.Render(":input") + " " +
-		styles.HelpKeyStyle.Render("r") + styles.HelpStyle.Render(":reply") + " " +
-		styles.HelpKeyStyle.Render("q") + styles.HelpStyle.Render(":quit")
+	// Use keybindings from keymap for help text
+	km := m.keymap
+	help := styles.HelpKeyStyle.Render(km.GetHelpText(keymap.ActionNextPanel)) + styles.HelpStyle.Render(":switch") + " " +
+		styles.HelpKeyStyle.Render(km.GetHelpText(keymap.ActionSelect)) + styles.HelpStyle.Render(":select") + " " +
+		styles.HelpKeyStyle.Render(km.GetHelpText(keymap.ActionInputMode)) + styles.HelpStyle.Render(":input") + " " +
+		styles.HelpKeyStyle.Render(km.GetHelpText(keymap.ActionReply)) + styles.HelpStyle.Render(":reply") + " " +
+		styles.HelpKeyStyle.Render(km.GetHelpText(keymap.ActionQuit)) + styles.HelpStyle.Render(":quit")
 
 	gap := m.width - lipgloss.Width(status) - lipgloss.Width(help) - 2
 	if gap < 0 {

@@ -6,11 +6,13 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/polidog/slack-tui/internal/keymap"
 	"github.com/polidog/slack-tui/internal/slack"
 	"github.com/polidog/slack-tui/internal/ui/styles"
 )
 
 type ThreadModel struct {
+	keymap        *keymap.Keymap
 	messages      []slack.Message
 	selectedIndex int
 	scrollOffset  int
@@ -22,8 +24,9 @@ type ThreadModel struct {
 	parentMessage *slack.Message
 }
 
-func NewThreadModel() ThreadModel {
+func NewThreadModel(km *keymap.Keymap) ThreadModel {
 	return ThreadModel{
+		keymap:    km,
 		messages:  []slack.Message{},
 		userCache: make(map[string]string),
 	}
@@ -40,16 +43,14 @@ func (m ThreadModel) Update(msg tea.Msg) (ThreadModel, tea.Cmd) {
 			return m, nil
 		}
 
-		switch msg.String() {
-		case "up", "k":
+		if m.keymap.MatchKey(msg, keymap.ActionUp) {
 			if m.selectedIndex > 0 {
 				m.selectedIndex--
 				if m.selectedIndex < m.scrollOffset {
 					m.scrollOffset = m.selectedIndex
 				}
 			}
-
-		case "down", "j":
+		} else if m.keymap.MatchKey(msg, keymap.ActionDown) {
 			if m.selectedIndex < len(m.messages)-1 {
 				m.selectedIndex++
 				visibleLines := m.height - 6
@@ -57,10 +58,35 @@ func (m ThreadModel) Update(msg tea.Msg) (ThreadModel, tea.Cmd) {
 					m.scrollOffset = m.selectedIndex - visibleLines + 1
 				}
 			}
-
-		case "esc":
-			m.visible = false
-			m.focused = false
+		} else if m.keymap.MatchKey(msg, keymap.ActionTop) {
+			m.selectedIndex = 0
+			m.scrollOffset = 0
+		} else if m.keymap.MatchKey(msg, keymap.ActionBottom) {
+			m.selectedIndex = len(m.messages) - 1
+			visibleLines := m.height - 6
+			if len(m.messages) > visibleLines {
+				m.scrollOffset = len(m.messages) - visibleLines
+			}
+		} else if m.keymap.MatchKey(msg, keymap.ActionHalfUp) {
+			jump := m.height / 2
+			m.selectedIndex -= jump
+			if m.selectedIndex < 0 {
+				m.selectedIndex = 0
+			}
+			m.scrollOffset -= jump
+			if m.scrollOffset < 0 {
+				m.scrollOffset = 0
+			}
+		} else if m.keymap.MatchKey(msg, keymap.ActionHalfDown) {
+			jump := m.height / 2
+			m.selectedIndex += jump
+			if m.selectedIndex >= len(m.messages) {
+				m.selectedIndex = len(m.messages) - 1
+			}
+			visibleLines := m.height - 6
+			if m.selectedIndex >= m.scrollOffset+visibleLines {
+				m.scrollOffset = m.selectedIndex - visibleLines + 1
+			}
 		}
 	}
 
