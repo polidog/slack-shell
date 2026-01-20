@@ -1,125 +1,127 @@
 # Slack Shell
 
-GoとBubble Teaで作られたターミナルベースのSlackクライアント。
-シェルコマンド風のインターフェースで直感的に操作できます。
+A terminal-based Slack client built with Go and Bubble Tea.
+Navigate Slack with familiar shell commands.
 
 ![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-## 機能
+[日本語版 README](README.ja.md)
 
-- 📺 チャンネルとダイレクトメッセージの閲覧
-- 💬 メッセージ履歴の表示・投稿
-- 🔄 `tail` コマンドでメッセージをリアルタイムストリーミング
-- ⚡ Socket Modeによるリアルタイム更新（オプション）
-- 🔐 **OAuth認証対応** - ブラウザで簡単ログイン
-- 🐚 **シェルライクなUI** - 使い慣れたコマンド操作
-- 🔀 **マルチワークスペース対応** - `source`コマンドで切り替え
-- 🔍 **パイプ対応** - `ls | grep` や `cat | grep` で検索
-- 🔔 **通知システム** - ターミナルベル、デスクトップ通知、タイトル更新、ビジュアル通知
-- ⌨️ **Tab補完** - `cd`コマンドでチャンネル名・ユーザー名を補完
+## Features
 
-## クイックスタート
+- Browse channels and direct messages
+- View and send messages
+- Real-time message streaming with `tail` command
+- Real-time updates via Socket Mode (optional)
+- **OAuth authentication** - Easy browser-based login
+- **Shell-like UI** - Familiar command interface
+- **Multi-workspace support** - Switch with `source` command
+- **Pipe support** - Search with `ls | grep` and `cat | grep`
+- **Notifications** - Terminal bell, desktop notifications, title updates, visual alerts
+- **Tab completion** - Auto-complete channel and user names with `cd`
 
-### 1. インストール
+## Quick Start
+
+### 1. Install
 
 ```bash
-# Go installでインストール
+# Install with go install
 go install github.com/polidog/slack-shell/cmd/slack-shell@latest
 
-# または、ソースからビルド
+# Or build from source
 git clone https://github.com/polidog/slack-shell.git
 cd slack-shell
 go build ./cmd/slack-shell
 ```
 
-### 2. Slack Appを作成
+### 2. Create a Slack App
 
-1. https://api.slack.com/apps にアクセス
-2. **Create New App** → **From scratch** を選択
-3. App名（例: `My TUI Client`）とワークスペースを選択
-4. **Create App** をクリック
+1. Go to https://api.slack.com/apps
+2. Click **Create New App** → **From scratch**
+3. Enter an App name (e.g., `My TUI Client`) and select your workspace
+4. Click **Create App**
 
-### 3. スコープを設定
+### 3. Configure Scopes
 
-1. 左メニューから **OAuth & Permissions** を選択
-2. **Scopes** セクションまでスクロール
-3. **User Token Scopes** に以下を追加:
+1. Select **OAuth & Permissions** from the left menu
+2. Scroll to the **Scopes** section
+3. Add the following **User Token Scopes**:
 
-| スコープ | 説明 |
-|----------|------|
-| `channels:read` | パブリックチャンネル一覧 |
-| `channels:history` | パブリックチャンネルのメッセージ |
-| `groups:read` | プライベートチャンネル一覧 |
-| `groups:history` | プライベートチャンネルのメッセージ |
-| `im:read` | DM一覧 |
-| `im:history` | DMのメッセージ |
-| `im:write` | DMを送信 |
-| `mpim:read` | グループDM一覧 |
-| `mpim:history` | グループDMのメッセージ |
-| `users:read` | ユーザー情報 |
-| `chat:write` | メッセージ送信 |
-| `team:read` | ワークスペース情報（プロンプト表示用） |
+| Scope | Description |
+|-------|-------------|
+| `channels:read` | List public channels |
+| `channels:history` | Read public channel messages |
+| `groups:read` | List private channels |
+| `groups:history` | Read private channel messages |
+| `im:read` | List DMs |
+| `im:history` | Read DM messages |
+| `im:write` | Send DMs |
+| `mpim:read` | List group DMs |
+| `mpim:history` | Read group DM messages |
+| `users:read` | View user info |
+| `chat:write` | Send messages |
+| `team:read` | View workspace info (for prompt display) |
 
-### 4. リダイレクトURLを設定
+### 4. Set Redirect URL
 
-1. **OAuth & Permissions** ページで **Redirect URLs** セクションを見つける
-2. **Add New Redirect URL** をクリック
-3. 以下を入力して **Add** → **Save URLs**:
+1. On the **OAuth & Permissions** page, find **Redirect URLs**
+2. Click **Add New Redirect URL**
+3. Enter the following and click **Add** → **Save URLs**:
    ```
    https://localhost:8080/callback
    ```
 
-### 5. Client IDとSecretを取得
+### 5. Get Client ID and Secret
 
-1. 左メニューから **Basic Information** を選択
-2. **App Credentials** セクションから:
-   - `Client ID` をコピー
-   - `Client Secret` の **Show** をクリックしてコピー
+1. Select **Basic Information** from the left menu
+2. In the **App Credentials** section:
+   - Copy the `Client ID`
+   - Click **Show** on `Client Secret` and copy it
 
-### 6. アプリを起動
+### 6. Run the App
 
 ```bash
-# 環境変数を設定
-export SLACK_CLIENT_ID="あなたのClient ID"
-export SLACK_CLIENT_SECRET="あなたのClient Secret"
+# Set environment variables
+export SLACK_CLIENT_ID="your-client-id"
+export SLACK_CLIENT_SECRET="your-client-secret"
 
-# 起動
+# Run
 ./slack-shell
 ```
 
-ブラウザが自動で開き、Slackの認証ページが表示されます。
-**許可する** をクリックすると認証完了です。
+A browser will open automatically with the Slack authorization page.
+Click **Allow** to complete authentication.
 
-> ⚠️ **注意**: 認証コールバック時にブラウザで「この接続は安全ではありません」と表示される場合があります。
-> これは自己署名証明書を使用しているためです。「詳細設定」→「localhostにアクセスする」をクリックして続行してください。
+> **Note**: You may see a "This connection is not secure" warning during the OAuth callback.
+> This is because a self-signed certificate is used. Click "Advanced" → "Proceed to localhost" to continue.
 
-## 基本的な使い方
+## Basic Usage
 
-### コマンド一覧
+### Commands
 
 ```
-slack> ls                    # チャンネル一覧を表示
-slack> ls dm                 # DM一覧のみ表示
-slack> cd #general           # チャンネルに入る
-slack> cd @john              # DMに入る
-slack> ..                    # チャンネル一覧に戻る
-slack> cat                   # メッセージ表示（デフォルト20件）
-slack> cat -n 50             # 50件表示
-slack> tail                  # 新着メッセージをリアルタイム表示
-slack> tail -n 10            # 直近10件表示後、リアルタイム表示
-slack> send Hello world      # メッセージ送信
-slack> pwd                   # 現在のチャンネル表示
-slack> source ~/work.yaml    # ワークスペースを切り替え
-slack> help                  # ヘルプ
-slack> exit                  # 終了
+slack> ls                    # List channels
+slack> ls dm                 # List DMs only
+slack> cd #general           # Enter a channel
+slack> cd @john              # Enter a DM
+slack> ..                    # Go back to channel list
+slack> cat                   # Show messages (default 20)
+slack> cat -n 50             # Show 50 messages
+slack> tail                  # Stream new messages in real-time
+slack> tail -n 10            # Show last 10, then stream
+slack> send Hello world      # Send a message
+slack> pwd                   # Show current channel
+slack> source ~/work.yaml    # Switch workspace
+slack> help                  # Show help
+slack> exit                  # Exit
 
-# パイプ対応
-slack> ls | grep dev         # チャンネル名で検索
-slack> cat | grep エラー     # メッセージ内容で検索
+# Pipe support
+slack> ls | grep dev         # Search channels by name
+slack> cat | grep error      # Search messages by content
 ```
 
-### 操作例
+### Example Session
 
 ```
 slack> ls
@@ -136,38 +138,83 @@ slack> cd #general
 Entered #general
 
 #general> cat
-[10:30] alice: おはようございます
-[10:32] bob: おはよう！
+[10:30] alice: Good morning everyone
+[10:32] bob: Morning!
         └─ 3 replies
 
-#general> send こんにちは
+#general> send Hello!
 Message sent.
 
 #general> tail
-[10:30] alice: おはようございます
-[10:32] bob: おはよう！
+[10:30] alice: Good morning everyone
+[10:32] bob: Morning!
 Tailing messages... (press 'q' or Ctrl+C to stop)
 >>> Watching for new messages (q to quit) <<<
 ```
 
-### tailコマンド（リアルタイムストリーミング）
-
-`tail` コマンドを使うと、`tail -f` のようにメッセージをリアルタイムで監視できます。
+## CLI Options
 
 ```bash
-#general> tail           # 直近10件表示後、新着を監視
-#general> tail -n 20     # 直近20件表示後、新着を監視
+# Normal startup (interactive mode)
+./slack-shell
+
+# One-liner execution (-c option)
+./slack-shell -c "ls"
+./slack-shell -c "cd #general && cat -n 5"
+./slack-shell -c "cd @john && send Good morning"
+./slack-shell -c "ls | grep dev"
+
+# Logout (delete saved credentials)
+./slack-shell logout
 ```
 
-- `q` キーまたは `Ctrl+C` で監視を終了
-- リアルタイム機能には `SLACK_APP_TOKEN` が必要です
+### -c Option
 
-### sourceコマンド（マルチワークスペース）
-
-`source` コマンドを使うと、設定ファイルを読み込んで別のワークスペースに切り替えられます。
+The `-c` option executes commands without entering interactive mode.
+Useful for scripting and cron jobs.
 
 ```bash
-# ワークスペース用の設定ファイルを作成
+# Chain multiple commands with && or ;
+./slack-shell -c "cd #general && send Daily standup starting!"
+
+# Pipes work too
+./slack-shell -c "cd #general && cat | grep meeting"
+
+# Example: Scheduled message with cron
+0 9 * * 1-5 /path/to/slack-shell -c "cd #general && send Good morning everyone!"
+```
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate command history |
+| `Tab` | Auto-complete channel/user names for `cd` |
+| `Ctrl+C` | Exit (or stop tail mode) |
+| `q` | Stop tail mode |
+
+## Tab Completion
+
+Press Tab while typing a `cd` command to auto-complete channel and user names.
+
+```
+slack> cd #          # Tab → show channel candidates
+slack> cd #gen       # Tab → complete to #general
+slack> cd @          # Tab → show user candidates
+slack> cd @ali       # Tab → complete to @alice
+```
+
+- **`cd #` + Tab**: Complete channel names only
+- **`cd @` + Tab**: Complete user names (DM recipients) only
+- **`cd ` + Tab**: Show both channels and users
+- **Multiple Tabs**: Cycle through candidates
+
+## Multi-Workspace
+
+Use the `source` command to switch between workspaces.
+
+```bash
+# Create workspace config files
 cat > ~/work-slack.yaml << EOF
 slack_token: xoxp-your-work-token
 EOF
@@ -176,264 +223,189 @@ cat > ~/personal-slack.yaml << EOF
 slack_token: xoxp-your-personal-token
 EOF
 
-# アプリ内で切り替え
+# Switch in the app
 slack> source ~/work-slack.yaml
 Switched to workspace: Work Inc.
-
-work> ls
-Channels:
-  # general
-  # engineering
 
 work> source ~/personal-slack.yaml
 Switched to workspace: Personal
 personal>
 ```
 
-### キーボードショートカット
+## Notifications
 
-| キー | 操作 |
-|------|------|
-| `↑` / `↓` | コマンド履歴の移動 |
-| `Tab` | `cd` コマンドの補完（チャンネル名・ユーザー名） |
-| `Ctrl+C` | 終了（tailモード中は監視終了） |
-| `q` | tailモード終了 |
+Receive notifications when messages arrive in other channels.
 
-### Tab補完
+### Notification Types
 
-`cd` コマンド入力時にTabキーを押すと、チャンネル名やユーザー名を補完できます。
+| Type | Description |
+|------|-------------|
+| **Terminal Bell** | Beep sound via `\a` character |
+| **Desktop** | OS native notifications (Linux/macOS/Windows) |
+| **Title** | Show unread count in terminal title (e.g., `Slack Shell (3)`) |
+| **Visual** | Display notification area at top of screen |
 
-```
-slack> cd #          # Tab押下 → チャンネル名候補を表示
-slack> cd #gen       # Tab押下 → #general に補完
-slack> cd @          # Tab押下 → ユーザー名候補を表示
-slack> cd @ali       # Tab押下 → @alice に補完
-```
+### Configuration
 
-- **`cd #` + Tab**: チャンネル名のみ補完
-- **`cd @` + Tab**: ユーザー名（DM相手）のみ補完
-- **`cd ` + Tab**: 両方の候補を表示
-- **Tab連打**: 次の候補に切り替え（循環）
-
-## 通知システム
-
-他のチャンネルに新着メッセージが届いたときに、4種類の方法で通知を受け取ることができます。
-
-### 通知タイプ
-
-| タイプ | 説明 |
-|--------|------|
-| **ターミナルベル** | `\a` 文字でビープ音を鳴らす |
-| **デスクトップ通知** | OS標準の通知を表示（Linux/macOS/Windows対応） |
-| **ターミナルタイトル** | 未読数をタイトルに表示（例: `Slack Shell (3)`） |
-| **ビジュアル通知** | 画面上部に通知エリアを表示 |
-
-### 通知の動作
-
-- 現在表示中のチャンネル以外からのメッセージで通知
-- `cd` でチャンネルに入ると、そのチャンネルの未読がクリア
-- `mentions_only` オプションで @メンションのみ通知可能
-- チャンネルごとのミュート設定
-- DND（Do Not Disturb）モードで全通知を一時停止
-
-### 通知設定
-
-`~/.slack-shell/config.yaml` に `notifications` セクションを追加:
+Add a `notifications` section to `~/.slack-shell/config.yaml`:
 
 ```yaml
 notifications:
-  enabled: true              # 通知システム全体の有効/無効
+  enabled: true
 
   bell:
-    enabled: true            # ターミナルベルの有効/無効
-    mentions_only: false     # @メンションのみ通知
+    enabled: true
+    mentions_only: false
 
   desktop:
-    enabled: true            # デスクトップ通知の有効/無効
-    mentions_only: false     # @メンションのみ通知
+    enabled: true
+    mentions_only: false
 
   title:
-    enabled: true            # タイトル更新の有効/無効
-    format: "Slack Shell (%d)" # 未読数表示フォーマット
-    base_title: "Slack Shell"  # 未読がない時のタイトル
+    enabled: true
+    format: "Slack Shell (%d)"
+    base_title: "Slack Shell"
 
   visual:
-    enabled: true            # ビジュアル通知の有効/無効
-    max_items: 5             # 表示する通知の最大数
-    dismiss_after: 10        # 自動消去までの秒数（0=自動消去なし）
+    enabled: true
+    max_items: 5
+    dismiss_after: 10
 
-  mute_channels: []          # 通知しないチャンネル名のリスト
-  dnd: false                 # Do Not Disturbモード
+  mute_channels: []
+  dnd: false
 ```
 
-## 認証方法
+## Real-time Updates (Socket Mode)
 
-### 方法1: OAuth認証（推奨）
+For real-time message streaming (required for `tail` command):
 
-環境変数:
+1. Enable **Socket Mode** in your Slack App settings
+2. Go to **Basic Information** → **App-Level Tokens** and create a new token
+   - Token Name: any name (e.g., `socket-token`)
+   - Scope: `connections:write`
+3. Set the generated token (`xapp-` prefix):
+
+```bash
+export SLACK_APP_TOKEN="xapp-your-app-token"
+```
+
+## Configuration File
+
+`~/.slack-shell/config.yaml`:
+
+```yaml
+# OAuth authentication (recommended)
+client_id: your-client-id
+client_secret: your-client-secret
+
+# Or direct token
+slack_token: xoxp-your-token
+
+# Socket Mode (optional, required for tail)
+app_token: xapp-your-app-token
+
+# Callback port (default: 8080)
+redirect_port: 8080
+```
+
+## Authentication Methods
+
+### Method 1: OAuth (Recommended)
+
+Environment variables:
 ```bash
 export SLACK_CLIENT_ID="your-client-id"
 export SLACK_CLIENT_SECRET="your-client-secret"
 ./slack-shell
 ```
 
-または設定ファイル `~/.slack-shell/config.yaml`:
+Or config file `~/.slack-shell/config.yaml`:
 ```yaml
 client_id: your-client-id
 client_secret: your-client-secret
 ```
 
-### 方法2: トークン直接指定
+### Method 2: Direct Token
 
 ```bash
 export SLACK_TOKEN="xoxp-your-token"
 ./slack-shell
 ```
 
-## コマンド
+## Troubleshooting
 
-```bash
-# 通常起動
-./slack-shell
+### "No credentials found" error
+- Verify environment variables or config file are set correctly
+- For OAuth, both Client ID and Client Secret are required
 
-# ワンライナー実行（-c オプション）
-./slack-shell -c "ls"
-./slack-shell -c "cd #general && cat -n 5"
-./slack-shell -c "cd @john && send おはよう"
-./slack-shell -c "ls | grep dev"
+### Browser doesn't open
+- Manually copy the URL shown in terminal and open in browser
 
-# ログアウト（保存された認証情報を削除）
-./slack-shell logout
-```
+### "invalid_client_id" error
+- Verify Client ID is correct
+- Ensure Slack App hasn't been deleted
 
-### -c オプション
+### Channels not showing
+- Verify all required scopes are added
+- Reinstall the Slack App to your workspace
 
-`-c` オプションを使うと、対話モードを起動せずにコマンドを実行して終了できます。
-シェルスクリプトやcronとの連携に便利です。
+### tail command not updating in real-time
+- Verify `SLACK_APP_TOKEN` is set
+- Ensure Socket Mode is enabled
 
-```bash
-# 複数コマンドを && または ; で連結
-./slack-shell -c "cd #times-polidog && send 朝のあいさつ"
-
-# パイプも使用可能
-./slack-shell -c "cd #general && cat | grep 会議"
-
-# 例: cronで定時メッセージ
-0 9 * * 1-5 /path/to/slack-shell -c "cd #general && send おはようございます"
-```
-
-## リアルタイム更新（Socket Mode）
-
-新着メッセージをリアルタイムで受信するには（`tail` コマンドに必要）:
-
-1. Slack Appの設定で **Socket Mode** を有効化
-2. **Basic Information** → **App-Level Tokens** で新しいトークンを作成
-   - Token Name: 任意（例: `socket-token`）
-   - Scope: `connections:write`
-3. 生成されたトークン（`xapp-` で始まる）を設定:
-
-```bash
-export SLACK_APP_TOKEN="xapp-your-app-token"
-```
-
-## 設定ファイル
-
-`~/.slack-shell/config.yaml`:
-
-```yaml
-# OAuth認証（推奨）
-client_id: your-client-id
-client_secret: your-client-secret
-
-# または直接トークン指定
-slack_token: xoxp-your-token
-
-# Socket Mode用（オプション、tailコマンドに必要）
-app_token: xapp-your-app-token
-
-# コールバックポート（デフォルト: 8080）
-redirect_port: 8080
-```
-
-## トラブルシューティング
-
-### 「認証情報が見つかりません」エラー
-
-- 環境変数または設定ファイルが正しく設定されているか確認
-- OAuth認証の場合、Client IDとClient Secretの両方が必要
-
-### ブラウザが開かない
-
-- 手動でターミナルに表示されたURLをコピーしてブラウザで開く
-
-### 「invalid_client_id」エラー
-
-- Client IDが正しいか確認
-- Slack Appが削除されていないか確認
-
-### チャンネルが表示されない
-
-- 必要なスコープがすべて追加されているか確認
-- Slack Appをワークスペースに再インストール
-
-### tailコマンドでリアルタイム更新されない
-
-- `SLACK_APP_TOKEN` が設定されているか確認
-- Socket Modeが有効になっているか確認
-
-### ログアウトしたい
+### Logout
 
 ```bash
 ./slack-shell logout
 ```
 
-## 開発
+## Development
 
-### ビルド
+### Build
 
 ```bash
 go build ./cmd/slack-shell
 ```
 
-### テスト
+### Test
 
 ```bash
 go test ./...
 ```
 
-## ファイル構成
+## Project Structure
 
 ```
 slack-shell/
-├── cmd/slack-shell/main.go     # エントリーポイント
+├── cmd/slack-shell/main.go     # Entry point
 ├── internal/
-│   ├── app/app.go            # アプリケーション初期化
-│   ├── config/config.go      # 設定管理
-│   ├── oauth/oauth.go        # OAuth認証フロー
-│   ├── notification/         # 通知システム
-│   │   ├── config.go         # 通知設定
-│   │   ├── notification.go   # Message型、インターフェース
-│   │   ├── manager.go        # 通知マネージャー
-│   │   ├── bell.go           # ターミナルベル通知
-│   │   ├── desktop.go        # デスクトップ通知
-│   │   ├── title.go          # ターミナルタイトル通知
-│   │   └── visual.go         # ビジュアル通知
-│   ├── slack/                # Slack APIクライアント
+│   ├── app/app.go              # Application initialization
+│   ├── config/config.go        # Configuration management
+│   ├── oauth/oauth.go          # OAuth flow
+│   ├── notification/           # Notification system
+│   │   ├── config.go
+│   │   ├── notification.go
+│   │   ├── manager.go
+│   │   ├── bell.go
+│   │   ├── desktop.go
+│   │   ├── title.go
+│   │   └── visual.go
+│   ├── slack/                  # Slack API client
 │   │   ├── client.go
 │   │   ├── channels.go
 │   │   ├── messages.go
 │   │   ├── threads.go
 │   │   └── realtime.go
-│   └── shell/                # シェルUIコンポーネント
-│       ├── model.go          # Bubble Teaモデル
-│       ├── commands.go       # コマンド実行
-│       ├── parser.go         # コマンドパーサー
-│       └── output.go         # 出力フォーマット
+│   └── shell/                  # Shell UI components
+│       ├── model.go
+│       ├── commands.go
+│       ├── parser.go
+│       └── output.go
 ├── go.mod
 ├── go.sum
 └── README.md
 ```
 
-## ライセンス
+## License
 
 MIT
