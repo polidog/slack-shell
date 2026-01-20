@@ -103,7 +103,7 @@ func (a *App) Run() error {
 	notifyCfg := a.config.GetNotificationConfig()
 	a.notificationManager = notification.NewManager(notifyCfg)
 
-	model := shell.NewModel(a.slackClient, a.notificationManager, a.config.GetPromptConfig())
+	model := shell.NewModel(a.slackClient, a.notificationManager, a.config.GetPromptConfig(), a.config.GetStartupConfig())
 
 	// Set up realtime client if app token is available
 	if a.config.AppToken != "" {

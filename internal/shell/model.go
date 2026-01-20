@@ -48,10 +48,13 @@ type Model struct {
 	completionIndex      int
 	completionActive     bool
 	originalInput        string
+
+	// Startup config
+	startupConfig *config.StartupConfig
 }
 
 // NewModel creates a new shell model
-func NewModel(client *slack.Client, notifyMgr *notification.Manager, promptConfig *config.PromptConfig) *Model {
+func NewModel(client *slack.Client, notifyMgr *notification.Manager, promptConfig *config.PromptConfig, startupConfig *config.StartupConfig) *Model {
 	executor := NewExecutor(client, promptConfig)
 
 	ti := textinput.New()
@@ -68,6 +71,7 @@ func NewModel(client *slack.Client, notifyMgr *notification.Manager, promptConfi
 		history:             []string{},
 		historyIndex:        -1,
 		commandHistory:      []string{},
+		startupConfig:       startupConfig,
 	}
 }
 
@@ -78,9 +82,41 @@ func (m *Model) SetRealtimeClient(rc *slack.RealtimeClient) {
 
 // Init initializes the model
 func (m *Model) Init() tea.Cmd {
-	// Show welcome message with workspace name
-	m.history = append(m.history, fmt.Sprintf("Welcome to Slack Shell - %s", m.executor.GetWorkspaceName()))
+	// Show startup banner or message
+	workspaceName := m.executor.GetWorkspaceName()
+
+	if m.startupConfig != nil && m.startupConfig.Banner != "" {
+		// Show multi-line banner
+		banner := strings.ReplaceAll(m.startupConfig.Banner, "{workspace}", workspaceName)
+		for _, line := range strings.Split(strings.TrimSuffix(banner, "\n"), "\n") {
+			m.history = append(m.history, line)
+		}
+	} else if m.startupConfig != nil && m.startupConfig.Message != "" {
+		// Show single line message
+		message := strings.ReplaceAll(m.startupConfig.Message, "{workspace}", workspaceName)
+		m.history = append(m.history, message)
+	} else {
+		// Default message
+		m.history = append(m.history, fmt.Sprintf("Welcome to Slack Shell - %s", workspaceName))
+	}
 	m.history = append(m.history, "Type 'help' for available commands.\n")
+
+	// Execute init commands
+	if m.startupConfig != nil && len(m.startupConfig.InitCommands) > 0 {
+		for _, cmdStr := range m.startupConfig.InitCommands {
+			m.history = append(m.history, promptStyle.Render(m.executor.GetPrompt())+cmdStr)
+			pipeline := ParsePipeline(cmdStr)
+			result := m.executor.ExecutePipeline(pipeline)
+			if result.Output != "" {
+				m.history = append(m.history, result.Output)
+			}
+			if result.Error != nil {
+				m.history = append(m.history, errorStyle.Render(fmt.Sprintf("Error: %v", result.Error)))
+			}
+		}
+		// Update prompt after init commands
+		m.input.Prompt = promptStyle.Render(m.executor.GetPrompt())
+	}
 
 	return textinput.Blink
 }

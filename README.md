@@ -378,6 +378,46 @@ prompt:
 # Result: [MyCompany:general]$
 ```
 
+## Startup Customization
+
+Customize the startup message, banner, and auto-execute commands in `~/.slack-shell/config.yaml`:
+
+```yaml
+startup:
+  # Single line welcome message
+  # Available variables: {workspace}
+  message: "Welcome to Slack Shell - {workspace}"
+
+  # Multi-line banner (overrides message if set)
+  banner: |
+    ╔═══════════════════════════════════════╗
+    ║  Slack Shell v1.0                     ║
+    ║  Workspace: {workspace}               ║
+    ╚═══════════════════════════════════════╝
+
+  # Commands to execute automatically at startup
+  init_commands:
+    - "cd #general"
+    - "cat -n 5"
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `message` | Single line welcome message (default: "Welcome to Slack Shell - {workspace}") |
+| `banner` | Multi-line ASCII art banner (overrides `message` if set) |
+| `init_commands` | List of commands to execute at startup (like `.bashrc`) |
+
+### Example: Auto-enter Channel
+
+```yaml
+startup:
+  message: "Welcome back! Entering #general..."
+  init_commands:
+    - "cd #general"
+```
+
 ## Authentication Methods
 
 ### Method 1: OAuth (Recommended)

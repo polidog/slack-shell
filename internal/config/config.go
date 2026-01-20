@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -199,6 +200,23 @@ func DefaultPromptConfig() *PromptConfig {
 	}
 }
 
+// GetStartupConfig returns startup config with defaults
+func (c *Config) GetStartupConfig() *StartupConfig {
+	if c.Startup != nil {
+		return c.Startup
+	}
+	return DefaultStartupConfig()
+}
+
+// DefaultStartupConfig returns the default startup configuration
+func DefaultStartupConfig() *StartupConfig {
+	return &StartupConfig{
+		Message:      "Welcome to Slack Shell - {workspace}",
+		Banner:       "",
+		InitCommands: nil,
+	}
+}
+
 func LoadCredentials() (*Credentials, error) {
 	configDir, err := GetConfigDir()
 	if err != nil {
@@ -255,4 +273,167 @@ func (c *Config) HasOAuthConfig() bool {
 
 func (c *Config) HasDirectToken() bool {
 	return c.SlackToken != ""
+}
+
+// SampleConfigYAML returns a sample configuration file with comments
+func SampleConfigYAML() string {
+	return `# Slack Shell Configuration
+# Place this file at ~/.slack-shell/config.yaml
+
+# ============================================================
+# Authentication
+# ============================================================
+# Option 1: OAuth (recommended)
+# Get these from your Slack App settings at https://api.slack.com/apps
+# client_id: "your-client-id"
+# client_secret: "your-client-secret"
+# redirect_port: 8080
+
+# Option 2: Direct token (legacy)
+# slack_token: "xoxp-your-token"
+# app_token: "xapp-your-app-token"
+
+# ============================================================
+# Prompt Customization
+# ============================================================
+prompt:
+  # Available variables:
+  #   {workspace} - workspace name
+  #   {location}  - #channel, @user, or empty for root
+  #   {channel}   - channel name only (without #)
+  #   {user}      - user name only (without @)
+  format: "{workspace} {location}> "
+
+# ============================================================
+# Startup Customization
+# ============================================================
+startup:
+  # Single line welcome message
+  # Available variables: {workspace}
+  message: "Welcome to Slack Shell - {workspace}"
+
+  # Multi-line banner (overrides message if set)
+  # banner: |
+  #   ╔═══════════════════════════════╗
+  #   ║  Welcome to {workspace}       ║
+  #   ╚═══════════════════════════════╝
+
+  # Commands to execute automatically at startup
+  # init_commands:
+  #   - "cd #general"
+  #   - "cat -n 10"
+
+# ============================================================
+# Keybindings (Vim-like defaults)
+# ============================================================
+keybindings:
+  # Navigation
+  up: ["k", "up"]
+  down: ["j", "down"]
+  top: ["g", "home"]
+  bottom: ["G", "end"]
+  page_up: ["ctrl+b", "pgup"]
+  page_down: ["ctrl+f", "pgdown"]
+  half_up: ["ctrl+u"]
+  half_down: ["ctrl+d"]
+
+  # Panel navigation
+  next_panel: ["tab", "l"]
+  prev_panel: ["shift+tab", "h"]
+
+  # Actions
+  select: ["enter", "o"]
+  back: ["esc", "q"]
+  input_mode: ["i", "a"]
+  reply: ["r"]
+  quit: ["q"]
+  force_quit: ["ctrl+c"]
+  open_thread: ["enter", "t"]
+  close_thread: ["esc", "q"]
+
+  # Input mode
+  submit: ["enter"]
+  cancel: ["esc"]
+
+  # Search
+  search: ["/"]
+  next_match: ["n"]
+  prev_match: ["N"]
+
+  # Misc
+  refresh: ["ctrl+r", "R"]
+  help: ["?"]
+
+# ============================================================
+# Notifications
+# ============================================================
+notifications:
+  enabled: true
+  dnd: false
+
+  # Mute specific channels
+  # mute_channels:
+  #   - "#random"
+  #   - "#announcements"
+
+  # Terminal bell
+  bell:
+    enabled: true
+    mentions_only: false
+
+  # Desktop notifications (requires notify-send on Linux)
+  desktop:
+    enabled: true
+    mentions_only: false
+
+  # Terminal title (shows unread count)
+  title:
+    enabled: true
+    format: "Slack Shell (%d)"
+    base_title: "Slack Shell"
+
+  # Visual notifications (in-app)
+  visual:
+    enabled: true
+    max_items: 5
+    dismiss_after: 10
+`
+}
+
+// InitConfig creates a sample config file at the default location
+func InitConfig(force bool) error {
+	configDir, err := GetConfigDir()
+	if err != nil {
+		return err
+	}
+
+	// Create config directory if it doesn't exist
+	if err := os.MkdirAll(configDir, 0700); err != nil {
+		return err
+	}
+
+	configPath := filepath.Join(configDir, "config.yaml")
+
+	// Check if file already exists
+	if !force {
+		if _, err := os.Stat(configPath); err == nil {
+			return fmt.Errorf("config file already exists at %s (use --force to overwrite)", configPath)
+		}
+	}
+
+	// Write sample config
+	if err := os.WriteFile(configPath, []byte(SampleConfigYAML()), 0600); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GetConfigPath returns the path to the config file
+func GetConfigPath() (string, error) {
+	configDir, err := GetConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(configDir, "config.yaml"), nil
 }

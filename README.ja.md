@@ -433,6 +433,46 @@ prompt:
 # 結果: [MyCompany:general]$
 ```
 
+## 起動時のカスタマイズ
+
+`~/.slack-shell/config.yaml` で起動時のメッセージ、バナー、自動実行コマンドをカスタマイズできます：
+
+```yaml
+startup:
+  # 1行のウェルカムメッセージ
+  # 使用可能な変数: {workspace}
+  message: "Welcome to Slack Shell - {workspace}"
+
+  # 複数行のバナー（messageより優先されます）
+  banner: |
+    ╔═══════════════════════════════════════╗
+    ║  Slack Shell v1.0                     ║
+    ║  ワークスペース: {workspace}          ║
+    ╚═══════════════════════════════════════╝
+
+  # 起動時に自動実行するコマンド
+  init_commands:
+    - "cd #general"
+    - "cat -n 5"
+```
+
+### オプション
+
+| オプション | 説明 |
+|------------|------|
+| `message` | 1行のウェルカムメッセージ（デフォルト: "Welcome to Slack Shell - {workspace}"） |
+| `banner` | 複数行のASCIIアートバナー（設定すると `message` より優先） |
+| `init_commands` | 起動時に自動実行するコマンドリスト（`.bashrc` のように） |
+
+### 例: 自動でチャンネルに入る
+
+```yaml
+startup:
+  message: "おかえりなさい！#generalに入ります..."
+  init_commands:
+    - "cd #general"
+```
+
 ## トラブルシューティング
 
 ### 「認証情報が見つかりません」エラー
