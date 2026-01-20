@@ -59,6 +59,7 @@ go build ./cmd/slack-tui
 | `mpim:history` | グループDMのメッセージ |
 | `users:read` | ユーザー情報 |
 | `chat:write` | メッセージ送信 |
+| `team:read` | ワークスペース情報（プロンプト表示用） |
 
 ### 4. リダイレクトURLを設定
 

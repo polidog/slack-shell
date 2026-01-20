@@ -34,6 +34,11 @@ func NewExecutor(client *slack.Client) *Executor {
 	}
 }
 
+// SetWorkspaceName allows setting the workspace name (used when switching workspaces)
+func (e *Executor) SetWorkspaceName(name string) {
+	e.workspaceName = name
+}
+
 // ExecuteResult represents the result of a command execution
 type ExecuteResult struct {
 	Output          string

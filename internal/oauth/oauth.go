@@ -40,6 +40,7 @@ var requiredScopes = []string{
 	"mpim:history",
 	"users:read",
 	"chat:write",
+	"team:read",
 }
 
 type OAuthFlow struct {

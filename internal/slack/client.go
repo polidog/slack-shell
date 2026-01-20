@@ -8,6 +8,8 @@ type Client struct {
 	api      *slack.Client
 	userID   string
 	userName string
+	teamID   string
+	teamName string
 }
 
 func NewClient(token string) (*Client, error) {
@@ -23,6 +25,8 @@ func NewClient(token string) (*Client, error) {
 		api:      api,
 		userID:   authTest.UserID,
 		userName: authTest.User,
+		teamID:   authTest.TeamID,
+		teamName: authTest.Team,
 	}, nil
 }
 
@@ -45,12 +49,13 @@ type TeamInfo struct {
 }
 
 func (c *Client) GetTeamInfo() (*TeamInfo, error) {
-	info, err := c.api.GetTeamInfo()
-	if err != nil {
-		return nil, err
-	}
+	// Return cached team info from AuthTest
 	return &TeamInfo{
-		ID:   info.ID,
-		Name: info.Name,
+		ID:   c.teamID,
+		Name: c.teamName,
 	}, nil
+}
+
+func (c *Client) GetTeamName() string {
+	return c.teamName
 }
