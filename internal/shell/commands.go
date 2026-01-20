@@ -2,8 +2,11 @@ package shell
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/polidog/slack-tui/internal/config"
 	"github.com/polidog/slack-tui/internal/slack"
 )
 
@@ -26,10 +29,18 @@ func NewExecutor(client *slack.Client) *Executor {
 
 // ExecuteResult represents the result of a command execution
 type ExecuteResult struct {
-	Output   string
-	Exit     bool
-	Error    error
-	NeedLoad bool // Indicates if we need to load data first
+	Output          string
+	Exit            bool
+	Error           error
+	NeedLoad        bool         // Indicates if we need to load data first
+	SwitchWorkspace *SwitchWorkspaceResult // Indicates workspace switch is requested
+}
+
+// SwitchWorkspaceResult contains info for switching workspace
+type SwitchWorkspaceResult struct {
+	Config   *config.Config
+	Client   *slack.Client
+	TeamName string
 }
 
 // Execute runs the given command and returns the result
@@ -51,6 +62,8 @@ func (e *Executor) Execute(cmd Command) ExecuteResult {
 		return ExecuteResult{Output: FormatHelp()}
 	case CmdExit:
 		return ExecuteResult{Exit: true}
+	case CmdSource:
+		return e.executeSource(cmd)
 	default:
 		return ExecuteResult{Output: "Unknown command. Type 'help' for available commands."}
 	}
@@ -312,6 +325,73 @@ func (e *Executor) GetPrompt() string {
 	return fmt.Sprintf("#%s> ", e.currentChannel.Name)
 }
 
+func (e *Executor) executeSource(cmd Command) ExecuteResult {
+	if len(cmd.Args) == 0 {
+		return ExecuteResult{Output: "Usage: source <config-file-path>"}
+	}
+
+	path := cmd.Args[0]
+
+	// Expand ~ to home directory
+	if strings.HasPrefix(path, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ExecuteResult{Error: fmt.Errorf("failed to get home directory: %w", err)}
+		}
+		path = filepath.Join(home, path[1:])
+	}
+
+	// Make absolute path
+	if !filepath.IsAbs(path) {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return ExecuteResult{Error: fmt.Errorf("failed to get current directory: %w", err)}
+		}
+		path = filepath.Join(cwd, path)
+	}
+
+	// Load config from file
+	cfg, err := config.LoadFromPath(path)
+	if err != nil {
+		return ExecuteResult{Error: fmt.Errorf("failed to load config: %w", err)}
+	}
+
+	// Get token from config
+	token := cfg.SlackToken
+	if token == "" {
+		return ExecuteResult{Error: fmt.Errorf("slack_token not found in config file")}
+	}
+
+	// Create new client
+	client, err := slack.NewClient(token)
+	if err != nil {
+		return ExecuteResult{Error: fmt.Errorf("failed to create Slack client: %w", err)}
+	}
+
+	// Get team info for display
+	teamName := "Unknown"
+	if info, err := client.GetTeamInfo(); err == nil && info != nil {
+		teamName = info.Name
+	}
+
+	return ExecuteResult{
+		SwitchWorkspace: &SwitchWorkspaceResult{
+			Config:   cfg,
+			Client:   client,
+			TeamName: teamName,
+		},
+	}
+}
+
+// SwitchClient switches the executor to use a new client
+func (e *Executor) SwitchClient(client *slack.Client) {
+	e.client = client
+	e.channels = nil
+	e.dms = nil
+	e.userNames = make(map[string]string)
+	e.currentChannel = nil
+}
+
 // HandleIncomingMessage handles a real-time message
 func (e *Executor) HandleIncomingMessage(msg slack.IncomingMessage) string {
 	// Only show if we're in the same channel
@@ -333,4 +413,155 @@ func (e *Executor) HandleIncomingMessage(msg slack.IncomingMessage) string {
 	}
 
 	return fmt.Sprintf("\n[new] %s: %s", userName, msg.Text)
+}
+
+// ExecutePipeline executes a pipeline of commands
+func (e *Executor) ExecutePipeline(pipeline Pipeline) ExecuteResult {
+	if len(pipeline.Commands) == 0 {
+		return ExecuteResult{Output: ""}
+	}
+
+	// Execute first command
+	result := e.Execute(pipeline.Commands[0])
+	if result.Error != nil || result.Exit || len(pipeline.Commands) == 1 {
+		return result
+	}
+
+	// Pipe output through remaining commands
+	currentOutput := result.Output
+	for i := 1; i < len(pipeline.Commands); i++ {
+		cmd := pipeline.Commands[i]
+		switch cmd.Type {
+		case CmdGrep:
+			currentOutput = e.executeGrep(cmd, currentOutput)
+		default:
+			return ExecuteResult{Error: fmt.Errorf("cannot pipe to '%s'", getCommandName(cmd.Type))}
+		}
+	}
+
+	return ExecuteResult{Output: currentOutput}
+}
+
+// executeGrep filters input by pattern
+func (e *Executor) executeGrep(cmd Command, input string) string {
+	if len(cmd.Args) == 0 {
+		return input
+	}
+
+	pattern := strings.ToLower(cmd.Args[0])
+	caseInsensitive := cmd.GetFlagBool("i")
+
+	lines := strings.Split(input, "\n")
+	var matched []string
+
+	for _, line := range lines {
+		searchLine := line
+		searchPattern := pattern
+		if caseInsensitive || true { // Always case-insensitive for now
+			searchLine = strings.ToLower(line)
+			searchPattern = strings.ToLower(pattern)
+		}
+		if strings.Contains(searchLine, searchPattern) {
+			matched = append(matched, line)
+		}
+	}
+
+	if len(matched) == 0 {
+		return "No matches found."
+	}
+
+	return strings.Join(matched, "\n")
+}
+
+// getCommandName returns the name of a command type
+func getCommandName(t CommandType) string {
+	switch t {
+	case CmdLs:
+		return "ls"
+	case CmdCd:
+		return "cd"
+	case CmdBack:
+		return ".."
+	case CmdCat:
+		return "cat"
+	case CmdTail:
+		return "tail"
+	case CmdSend:
+		return "send"
+	case CmdPwd:
+		return "pwd"
+	case CmdHelp:
+		return "help"
+	case CmdExit:
+		return "exit"
+	case CmdSource:
+		return "source"
+	case CmdGrep:
+		return "grep"
+	default:
+		return "unknown"
+	}
+}
+
+// GetChannelName returns the name of a channel by its ID
+func (e *Executor) GetChannelName(channelID string) string {
+	// Check in regular channels
+	for _, ch := range e.channels {
+		if ch.ID == channelID {
+			return ch.Name
+		}
+	}
+
+	// Check in DMs
+	for _, dm := range e.dms {
+		if dm.ID == channelID {
+			if name, ok := e.userNames[dm.UserID]; ok {
+				return name
+			}
+			return dm.UserID
+		}
+	}
+
+	return channelID
+}
+
+// GetUserName returns the name of a user by their ID
+func (e *Executor) GetUserName(userID string) string {
+	if name, ok := e.userNames[userID]; ok {
+		return name
+	}
+
+	// Try to fetch user info
+	user, err := e.client.GetUserInfo(userID)
+	if err == nil && user != nil {
+		e.userNames[userID] = user.Name
+		return user.Name
+	}
+
+	return userID
+}
+
+// IsMentionedInMessage checks if the current user is mentioned in the message
+func (e *Executor) IsMentionedInMessage(text string) bool {
+	// Check for @here, @channel, @everyone
+	if strings.Contains(text, "<!here>") ||
+		strings.Contains(text, "<!channel>") ||
+		strings.Contains(text, "<!everyone>") {
+		return true
+	}
+
+	// Check for direct mention (<@USER_ID>)
+	// We would need the current user ID to check this properly
+	// For now, return false as we don't have access to current user ID here
+	return false
+}
+
+// IsIMChannel checks if a channel ID is a direct message channel
+func (e *Executor) IsIMChannel(channelID string) bool {
+	for _, dm := range e.dms {
+		if dm.ID == channelID {
+			return true
+		}
+	}
+	return false
 }

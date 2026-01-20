@@ -37,3 +37,20 @@ func (c *Client) GetUserName() string {
 func (c *Client) API() *slack.Client {
 	return c.api
 }
+
+// TeamInfo represents basic team information
+type TeamInfo struct {
+	ID   string
+	Name string
+}
+
+func (c *Client) GetTeamInfo() (*TeamInfo, error) {
+	info, err := c.api.GetTeamInfo()
+	if err != nil {
+		return nil, err
+	}
+	return &TeamInfo{
+		ID:   info.ID,
+		Name: info.Name,
+	}, nil
+}

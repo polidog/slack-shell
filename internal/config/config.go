@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/polidog/slack-tui/internal/keymap"
+	"github.com/polidog/slack-tui/internal/notification"
 	"gopkg.in/yaml.v3"
 )
 
@@ -23,6 +24,9 @@ type Config struct {
 
 	// Keybindings
 	Keybindings *keymap.KeyBindings `yaml:"keybindings"`
+
+	// Notifications
+	Notifications *notification.Config `yaml:"notifications"`
 }
 
 type Credentials struct {
@@ -89,8 +93,30 @@ func Load() (*Config, error) {
 				if fileCfg.Keybindings != nil {
 					cfg.Keybindings = fileCfg.Keybindings
 				}
+				// Merge notifications
+				if fileCfg.Notifications != nil {
+					cfg.Notifications = fileCfg.Notifications
+				}
 			}
 		}
+	}
+
+	return cfg, nil
+}
+
+// LoadFromPath loads configuration from a specific file path
+func LoadFromPath(path string) (*Config, error) {
+	cfg := &Config{
+		RedirectPort: 8080,
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, err
 	}
 
 	return cfg, nil
@@ -103,6 +129,15 @@ func (c *Config) GetKeymap() *keymap.Keymap {
 		bindings.Merge(c.Keybindings)
 	}
 	return keymap.New(bindings)
+}
+
+// GetNotificationConfig returns notification config with defaults merged
+func (c *Config) GetNotificationConfig() *notification.Config {
+	cfg := notification.DefaultConfig()
+	if c.Notifications != nil {
+		cfg.Merge(c.Notifications)
+	}
+	return cfg
 }
 
 func LoadCredentials() (*Credentials, error) {

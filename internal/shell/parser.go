@@ -19,7 +19,14 @@ const (
 	CmdPwd
 	CmdHelp
 	CmdExit
+	CmdSource
+	CmdGrep
 )
+
+// Pipeline represents a series of commands connected by pipes
+type Pipeline struct {
+	Commands []Command
+}
 
 // Command represents a parsed command
 type Command struct {
@@ -101,9 +108,84 @@ func parseCommandType(s string) CommandType {
 		return CmdHelp
 	case "exit", "quit", "q":
 		return CmdExit
+	case "source":
+		return CmdSource
+	case "grep":
+		return CmdGrep
 	default:
 		return CmdUnknown
 	}
+}
+
+// ParsePipeline parses a command string that may contain pipes
+func ParsePipeline(input string) Pipeline {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return Pipeline{Commands: []Command{{Type: CmdUnknown}}}
+	}
+
+	// Split by pipe, but not inside quotes
+	parts := splitByPipe(input)
+	pipeline := Pipeline{Commands: make([]Command, 0, len(parts))}
+
+	for _, part := range parts {
+		cmd := ParseCommand(strings.TrimSpace(part))
+		pipeline.Commands = append(pipeline.Commands, cmd)
+	}
+
+	return pipeline
+}
+
+// splitByPipe splits input by | but respects quotes
+func splitByPipe(input string) []string {
+	var parts []string
+	var current strings.Builder
+	inQuote := false
+	quoteChar := rune(0)
+
+	for _, r := range input {
+		switch {
+		case (r == '"' || r == '\'') && !inQuote:
+			inQuote = true
+			quoteChar = r
+			current.WriteRune(r)
+		case r == quoteChar && inQuote:
+			inQuote = false
+			quoteChar = 0
+			current.WriteRune(r)
+		case r == '|' && !inQuote:
+			parts = append(parts, current.String())
+			current.Reset()
+		default:
+			current.WriteRune(r)
+		}
+	}
+
+	if current.Len() > 0 {
+		parts = append(parts, current.String())
+	}
+
+	return parts
+}
+
+// IsPipeline returns true if the input contains a pipe
+func IsPipeline(input string) bool {
+	inQuote := false
+	quoteChar := rune(0)
+
+	for _, r := range input {
+		switch {
+		case (r == '"' || r == '\'') && !inQuote:
+			inQuote = true
+			quoteChar = r
+		case r == quoteChar && inQuote:
+			inQuote = false
+			quoteChar = 0
+		case r == '|' && !inQuote:
+			return true
+		}
+	}
+	return false
 }
 
 // tokenize splits the input into tokens, respecting quotes

@@ -1,39 +1,46 @@
 package shell
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/polidog/slack-tui/internal/notification"
 	"github.com/polidog/slack-tui/internal/slack"
 )
 
 var (
-	promptStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	outputStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	tailStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	newMsgStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	promptStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	outputStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	tailStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	newMsgStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	notificationStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("15")).
+				Background(lipgloss.Color("4")).
+				Padding(0, 1)
 )
 
 // Model is the Bubble Tea model for the shell UI
 type Model struct {
-	client         *slack.Client
-	realtimeClient *slack.RealtimeClient
-	executor       *Executor
-	input          textinput.Model
-	history        []string
-	historyIndex   int
-	commandHistory []string
-	width          int
-	height         int
-	ready          bool
-	tailMode       bool
+	client              *slack.Client
+	realtimeClient      *slack.RealtimeClient
+	notificationManager *notification.Manager
+	executor            *Executor
+	input               textinput.Model
+	history             []string
+	historyIndex        int
+	commandHistory      []string
+	width               int
+	height              int
+	ready               bool
+	tailMode            bool
 }
 
 // NewModel creates a new shell model
-func NewModel(client *slack.Client) *Model {
+func NewModel(client *slack.Client, notifyMgr *notification.Manager) *Model {
 	ti := textinput.New()
 	ti.Prompt = promptStyle.Render("slack> ")
 	ti.Focus()
@@ -41,12 +48,13 @@ func NewModel(client *slack.Client) *Model {
 	ti.Width = 80
 
 	return &Model{
-		client:         client,
-		executor:       NewExecutor(client),
-		input:          ti,
-		history:        []string{},
-		historyIndex:   -1,
-		commandHistory: []string{},
+		client:              client,
+		notificationManager: notifyMgr,
+		executor:            NewExecutor(client),
+		input:               ti,
+		history:             []string{},
+		historyIndex:        -1,
+		commandHistory:      []string{},
 	}
 }
 
@@ -111,13 +119,39 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ready = true
 
 	case IncomingMessageMsg:
-		output := m.executor.HandleIncomingMessage(slack.IncomingMessage(msg))
+		slackMsg := slack.IncomingMessage(msg)
+		output := m.executor.HandleIncomingMessage(slackMsg)
 		if output != "" {
 			if m.tailMode {
 				m.history = append(m.history, newMsgStyle.Render(output))
 			} else {
 				m.history = append(m.history, output)
 			}
+		}
+
+		// Trigger notifications for messages from other channels
+		if m.notificationManager != nil {
+			currentChannelID := ""
+			currentChannel := m.executor.GetCurrentChannel()
+			if currentChannel != nil {
+				currentChannelID = currentChannel.ID
+			}
+
+			// Get channel and user info for notification
+			channelName := m.executor.GetChannelName(slackMsg.ChannelID)
+			userName := m.executor.GetUserName(slackMsg.UserID)
+			isMention := m.executor.IsMentionedInMessage(slackMsg.Text)
+
+			notifyMsg := notification.Message{
+				ChannelID:   slackMsg.ChannelID,
+				ChannelName: channelName,
+				UserName:    userName,
+				Text:        slackMsg.Text,
+				IsMention:   isMention,
+				IsIM:        m.executor.IsIMChannel(slackMsg.ChannelID),
+			}
+
+			m.notificationManager.HandleMessage(notifyMsg, currentChannelID, m.tailMode)
 		}
 		return m, nil
 	}
@@ -139,15 +173,24 @@ func (m *Model) executeCommand() (tea.Model, tea.Cmd) {
 		m.commandHistory = append(m.commandHistory, input)
 		m.historyIndex = len(m.commandHistory)
 
-		// Parse and execute
-		cmd := ParseCommand(input)
+		var result ExecuteResult
+		var parsedCmd Command
 
-		// Handle tail command specially
-		if cmd.Type == CmdTail {
-			return m.startTailMode(cmd)
+		// Check if this is a pipeline
+		if IsPipeline(input) {
+			pipeline := ParsePipeline(input)
+			result = m.executor.ExecutePipeline(pipeline)
+		} else {
+			// Parse and execute single command
+			parsedCmd = ParseCommand(input)
+
+			// Handle tail command specially
+			if parsedCmd.Type == CmdTail {
+				return m.startTailMode(parsedCmd)
+			}
+
+			result = m.executor.Execute(parsedCmd)
 		}
-
-		result := m.executor.Execute(cmd)
 
 		if result.Exit {
 			return m, tea.Quit
@@ -155,8 +198,22 @@ func (m *Model) executeCommand() (tea.Model, tea.Cmd) {
 
 		if result.Error != nil {
 			m.history = append(m.history, errorStyle.Render(FormatError(result.Error)))
+		} else if result.SwitchWorkspace != nil {
+			// Handle workspace switch
+			m.client = result.SwitchWorkspace.Client
+			m.executor.SwitchClient(result.SwitchWorkspace.Client)
+			m.history = append(m.history, outputStyle.Render(
+				"Switched to workspace: "+result.SwitchWorkspace.TeamName))
 		} else if result.Output != "" {
 			m.history = append(m.history, outputStyle.Render(result.Output))
+
+			// Clear unread notifications when entering a channel
+			if parsedCmd.Type == CmdCd && m.notificationManager != nil {
+				currentChannel := m.executor.GetCurrentChannel()
+				if currentChannel != nil {
+					m.notificationManager.ClearUnread(currentChannel.ID)
+				}
+			}
 		}
 	}
 
@@ -231,8 +288,17 @@ func (m *Model) View() string {
 
 	var sb strings.Builder
 
+	// Render visual notifications at the top if any
+	notificationArea := m.renderNotifications()
+	notificationLines := 0
+	if notificationArea != "" {
+		sb.WriteString(notificationArea)
+		sb.WriteString("\n")
+		notificationLines = strings.Count(notificationArea, "\n") + 2
+	}
+
 	// Calculate how many history lines we can show
-	availableHeight := m.height - 2 // Reserve space for input and padding
+	availableHeight := m.height - 2 - notificationLines // Reserve space for input, padding and notifications
 
 	// Get the history lines to display
 	historyLines := []string{}
@@ -260,6 +326,39 @@ func (m *Model) View() string {
 	}
 
 	return sb.String()
+}
+
+// renderNotifications renders the visual notification area
+func (m *Model) renderNotifications() string {
+	if m.notificationManager == nil {
+		return ""
+	}
+
+	notifications := m.notificationManager.GetVisualNotifications()
+	if len(notifications) == 0 {
+		return ""
+	}
+
+	var lines []string
+	for _, n := range notifications {
+		var prefix string
+		if n.IsIM {
+			prefix = fmt.Sprintf("@%s", n.ChannelName)
+		} else {
+			prefix = fmt.Sprintf("#%s", n.ChannelName)
+		}
+
+		// Truncate message if too long
+		text := n.Text
+		if len(text) > 50 {
+			text = text[:47] + "..."
+		}
+
+		line := fmt.Sprintf("%s | %s: %s", prefix, n.UserName, text)
+		lines = append(lines, notificationStyle.Render(line))
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // HandleRealtimeEvent handles events from the realtime client

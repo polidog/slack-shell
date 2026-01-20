@@ -5,16 +5,18 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/polidog/slack-tui/internal/config"
+	"github.com/polidog/slack-tui/internal/notification"
 	"github.com/polidog/slack-tui/internal/oauth"
 	"github.com/polidog/slack-tui/internal/shell"
 	"github.com/polidog/slack-tui/internal/slack"
 )
 
 type App struct {
-	config         *config.Config
-	slackClient    *slack.Client
-	realtimeClient *slack.RealtimeClient
-	program        *tea.Program
+	config              *config.Config
+	slackClient         *slack.Client
+	realtimeClient      *slack.RealtimeClient
+	notificationManager *notification.Manager
+	program             *tea.Program
 }
 
 func New() (*App, error) {
@@ -97,7 +99,11 @@ func getToken(cfg *config.Config) (string, error) {
 }
 
 func (a *App) Run() error {
-	model := shell.NewModel(a.slackClient)
+	// Initialize notification manager
+	notifyCfg := a.config.GetNotificationConfig()
+	a.notificationManager = notification.NewManager(notifyCfg)
+
+	model := shell.NewModel(a.slackClient, a.notificationManager)
 
 	// Set up realtime client if app token is available
 	if a.config.AppToken != "" {
@@ -131,6 +137,9 @@ func (a *App) Run() error {
 func (a *App) Stop() {
 	if a.realtimeClient != nil {
 		a.realtimeClient.Stop()
+	}
+	if a.notificationManager != nil {
+		a.notificationManager.Close()
 	}
 }
 

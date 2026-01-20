@@ -14,6 +14,9 @@ GoとBubble Teaで作られたターミナルベースのSlackクライアント
 - ⚡ Socket Modeによるリアルタイム更新（オプション）
 - 🔐 **OAuth認証対応** - ブラウザで簡単ログイン
 - 🐚 **シェルライクなUI** - 使い慣れたコマンド操作
+- 🔀 **マルチワークスペース対応** - `source`コマンドで切り替え
+- 🔍 **パイプ対応** - `ls | grep` や `cat | grep` で検索
+- 🔔 **通知システム** - ターミナルベル、デスクトップ通知、タイトル更新、ビジュアル通知
 
 ## クイックスタート
 
@@ -105,8 +108,13 @@ slack> tail                  # 新着メッセージをリアルタイム表示
 slack> tail -n 10            # 直近10件表示後、リアルタイム表示
 slack> send Hello world      # メッセージ送信
 slack> pwd                   # 現在のチャンネル表示
+slack> source ~/work.yaml    # ワークスペースを切り替え
 slack> help                  # ヘルプ
 slack> exit                  # 終了
+
+# パイプ対応
+slack> ls | grep dev         # チャンネル名で検索
+slack> cat | grep エラー     # メッセージ内容で検索
 ```
 
 ### 操作例
@@ -152,6 +160,34 @@ Tailing messages... (press 'q' or Ctrl+C to stop)
 - `q` キーまたは `Ctrl+C` で監視を終了
 - リアルタイム機能には `SLACK_APP_TOKEN` が必要です
 
+### sourceコマンド（マルチワークスペース）
+
+`source` コマンドを使うと、設定ファイルを読み込んで別のワークスペースに切り替えられます。
+
+```bash
+# ワークスペース用の設定ファイルを作成
+cat > ~/work-slack.yaml << EOF
+slack_token: xoxp-your-work-token
+EOF
+
+cat > ~/personal-slack.yaml << EOF
+slack_token: xoxp-your-personal-token
+EOF
+
+# アプリ内で切り替え
+slack> source ~/work-slack.yaml
+Switched to workspace: Work Inc.
+
+work> ls
+Channels:
+  # general
+  # engineering
+
+work> source ~/personal-slack.yaml
+Switched to workspace: Personal
+personal>
+```
+
 ### キーボードショートカット
 
 | キー | 操作 |
@@ -159,6 +195,57 @@ Tailing messages... (press 'q' or Ctrl+C to stop)
 | `↑` / `↓` | コマンド履歴の移動 |
 | `Ctrl+C` | 終了（tailモード中は監視終了） |
 | `q` | tailモード終了 |
+
+## 通知システム
+
+他のチャンネルに新着メッセージが届いたときに、4種類の方法で通知を受け取ることができます。
+
+### 通知タイプ
+
+| タイプ | 説明 |
+|--------|------|
+| **ターミナルベル** | `\a` 文字でビープ音を鳴らす |
+| **デスクトップ通知** | OS標準の通知を表示（Linux/macOS/Windows対応） |
+| **ターミナルタイトル** | 未読数をタイトルに表示（例: `Slack TUI (3)`） |
+| **ビジュアル通知** | 画面上部に通知エリアを表示 |
+
+### 通知の動作
+
+- 現在表示中のチャンネル以外からのメッセージで通知
+- `cd` でチャンネルに入ると、そのチャンネルの未読がクリア
+- `mentions_only` オプションで @メンションのみ通知可能
+- チャンネルごとのミュート設定
+- DND（Do Not Disturb）モードで全通知を一時停止
+
+### 通知設定
+
+`~/.slack-tui/config.yaml` に `notifications` セクションを追加:
+
+```yaml
+notifications:
+  enabled: true              # 通知システム全体の有効/無効
+
+  bell:
+    enabled: true            # ターミナルベルの有効/無効
+    mentions_only: false     # @メンションのみ通知
+
+  desktop:
+    enabled: true            # デスクトップ通知の有効/無効
+    mentions_only: false     # @メンションのみ通知
+
+  title:
+    enabled: true            # タイトル更新の有効/無効
+    format: "Slack TUI (%d)" # 未読数表示フォーマット
+    base_title: "Slack TUI"  # 未読がない時のタイトル
+
+  visual:
+    enabled: true            # ビジュアル通知の有効/無効
+    max_items: 5             # 表示する通知の最大数
+    dismiss_after: 10        # 自動消去までの秒数（0=自動消去なし）
+
+  mute_channels: []          # 通知しないチャンネル名のリスト
+  dnd: false                 # Do Not Disturbモード
+```
 
 ## 認証方法
 
@@ -282,6 +369,14 @@ slack-tui/
 │   ├── app/app.go            # アプリケーション初期化
 │   ├── config/config.go      # 設定管理
 │   ├── oauth/oauth.go        # OAuth認証フロー
+│   ├── notification/         # 通知システム
+│   │   ├── config.go         # 通知設定
+│   │   ├── notification.go   # Message型、インターフェース
+│   │   ├── manager.go        # 通知マネージャー
+│   │   ├── bell.go           # ターミナルベル通知
+│   │   ├── desktop.go        # デスクトップ通知
+│   │   ├── title.go          # ターミナルタイトル通知
+│   │   └── visual.go         # ビジュアル通知
 │   ├── slack/                # Slack APIクライアント
 │   │   ├── client.go
 │   │   ├── channels.go

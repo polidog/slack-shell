@@ -136,8 +136,13 @@ func FormatHelp() string {
   tail -n 10      Show last 10 messages, then stream
   send <message>  Send a message
   pwd             Show current channel
+  source <file>   Switch workspace using config file
   help            Show this help
   exit            Exit the application
+
+Pipe support:
+  ls | grep <pattern>     Search channels/DMs by name
+  cat | grep <pattern>    Search messages by content
 `
 }
 
