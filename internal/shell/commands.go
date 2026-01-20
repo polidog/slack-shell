@@ -82,6 +82,8 @@ func (e *Executor) Execute(cmd Command) ExecuteResult {
 		return ExecuteResult{Exit: true}
 	case CmdSource:
 		return e.executeSource(cmd)
+	case CmdMkdir:
+		return e.executeMkdir(cmd)
 	default:
 		return ExecuteResult{Output: "Unknown command. Type 'help' for available commands."}
 	}
@@ -424,6 +426,35 @@ func (e *Executor) executeSource(cmd Command) ExecuteResult {
 	}
 }
 
+func (e *Executor) executeMkdir(cmd Command) ExecuteResult {
+	if len(cmd.Args) == 0 {
+		return ExecuteResult{Output: "Usage: mkdir #channel-name or mkdir -p #channel-name (private)"}
+	}
+
+	channelName := cmd.Args[0]
+	channelName = strings.TrimPrefix(channelName, "#")
+
+	if channelName == "" {
+		return ExecuteResult{Output: "Usage: mkdir #channel-name"}
+	}
+
+	isPrivate := cmd.GetFlagBool("p")
+
+	channel, err := e.client.CreateChannel(channelName, isPrivate)
+	if err != nil {
+		return ExecuteResult{Error: fmt.Errorf("failed to create channel: %w", err)}
+	}
+
+	// Invalidate cache so the new channel shows up in ls
+	e.channels = nil
+
+	prefix := "#"
+	if isPrivate {
+		prefix = "🔒"
+	}
+	return ExecuteResult{Output: fmt.Sprintf("Channel %s%s created.", prefix, channel.Name)}
+}
+
 // SwitchClient switches the executor to use a new client
 func (e *Executor) SwitchClient(client *slack.Client) {
 	e.client = client
@@ -547,6 +578,8 @@ func getCommandName(t CommandType) string {
 		return "grep"
 	case CmdBrowse:
 		return "browse"
+	case CmdMkdir:
+		return "mkdir"
 	default:
 		return "unknown"
 	}

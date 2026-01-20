@@ -17,6 +17,7 @@ Navigate Slack with familiar shell commands.
 - Real-time updates via Socket Mode (optional)
 - **OAuth authentication** - Easy browser-based login
 - **Shell-like UI** - Familiar command interface
+- **Channel creation** - Create public/private channels with `mkdir` command
 - **Multi-workspace support** - Switch with `source` command
 - **Pipe support** - Search with `ls | grep` and `cat | grep`
 - **Notifications** - Terminal bell, desktop notifications, title updates, visual alerts
@@ -52,8 +53,10 @@ go build ./cmd/slack-shell
 | Scope | Description |
 |-------|-------------|
 | `channels:read` | List public channels |
+| `channels:write` | Create public channels |
 | `channels:history` | Read public channel messages |
 | `groups:read` | List private channels |
+| `groups:write` | Create private channels |
 | `groups:history` | Read private channel messages |
 | `im:read` | List DMs |
 | `im:history` | Read DM messages |
@@ -107,6 +110,8 @@ slack> ls dm                 # List DMs only
 slack> cd #general           # Enter a channel
 slack> cd @john              # Enter a DM
 slack> ..                    # Go back to channel list
+slack> mkdir #new-channel    # Create a public channel
+slack> mkdir -p #private     # Create a private channel
 slack> cat                   # Show messages (default 20)
 slack> cat -n 50             # Show 50 messages
 slack> tail                  # Stream new messages in real-time

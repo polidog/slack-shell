@@ -164,3 +164,19 @@ func (c *Client) GetUsersInfo(userIDs []string) (*[]slack.User, error) {
 
 	return &allUsers, nil
 }
+
+func (c *Client) CreateChannel(name string, isPrivate bool) (*Channel, error) {
+	channel, err := c.api.CreateConversation(slack.CreateConversationParams{
+		ChannelName: name,
+		IsPrivate:   isPrivate,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Channel{
+		ID:        channel.ID,
+		Name:      channel.Name,
+		IsChannel: !isPrivate,
+		IsPrivate: isPrivate,
+	}, nil
+}

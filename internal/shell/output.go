@@ -130,6 +130,8 @@ func FormatHelp() string {
   cd #channel     Enter a channel
   cd @user        Enter a DM
   ..              Go back to channel list
+  mkdir #channel  Create a public channel
+  mkdir -p #chan  Create a private channel
   cat             Show messages (default 20)
   cat -n 50       Show 50 messages
   tail            Stream new messages (press 'q' to stop)

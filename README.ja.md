@@ -17,6 +17,7 @@ GoとBubble Teaで作られたターミナルベースのSlackクライアント
 - ⚡ Socket Modeによるリアルタイム更新（オプション）
 - 🔐 **OAuth認証対応** - ブラウザで簡単ログイン
 - 🐚 **シェルライクなUI** - 使い慣れたコマンド操作
+- 📁 **チャンネル作成** - `mkdir`コマンドでパブリック/プライベートチャンネルを作成
 - 🔀 **マルチワークスペース対応** - `source`コマンドで切り替え
 - 🔍 **パイプ対応** - `ls | grep` や `cat | grep` で検索
 - 🔔 **通知システム** - ターミナルベル、デスクトップ通知、タイトル更新、ビジュアル通知
@@ -52,8 +53,10 @@ go build ./cmd/slack-shell
 | スコープ | 説明 |
 |----------|------|
 | `channels:read` | パブリックチャンネル一覧 |
+| `channels:write` | パブリックチャンネル作成 |
 | `channels:history` | パブリックチャンネルのメッセージ |
 | `groups:read` | プライベートチャンネル一覧 |
+| `groups:write` | プライベートチャンネル作成 |
 | `groups:history` | プライベートチャンネルのメッセージ |
 | `im:read` | DM一覧 |
 | `im:history` | DMのメッセージ |
@@ -107,6 +110,8 @@ slack> ls dm                 # DM一覧のみ表示
 slack> cd #general           # チャンネルに入る
 slack> cd @john              # DMに入る
 slack> ..                    # チャンネル一覧に戻る
+slack> mkdir #new-channel    # パブリックチャンネルを作成
+slack> mkdir -p #private     # プライベートチャンネルを作成
 slack> cat                   # メッセージ表示（デフォルト20件）
 slack> cat -n 50             # 50件表示
 slack> tail                  # 新着メッセージをリアルタイム表示
