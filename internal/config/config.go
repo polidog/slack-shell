@@ -76,12 +76,50 @@ type Credentials struct {
 	TeamName     string `json:"team_name"`
 }
 
+// GetConfigDir returns the configuration directory path.
+// Uses XDG_CONFIG_HOME if set, otherwise ~/.config/slack-shell/
 func GetConfigDir() (string, error) {
+	// Check XDG_CONFIG_HOME first
+	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
+		return filepath.Join(xdgConfig, "slack-shell"), nil
+	}
+
+	// Default to ~/.config/slack-shell/
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".config", "slack-shell"), nil
+}
+
+// GetLegacyConfigDir returns the legacy configuration directory path (~/.slack-shell/)
+func GetLegacyConfigDir() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(homeDir, ".slack-shell"), nil
+}
+
+// findConfigFile looks for config.yaml in XDG config dir, then legacy dir
+func findConfigFile() string {
+	// Try new location first (~/.config/slack-shell/ or $XDG_CONFIG_HOME/slack-shell/)
+	if configDir, err := GetConfigDir(); err == nil {
+		configPath := filepath.Join(configDir, "config.yaml")
+		if _, err := os.Stat(configPath); err == nil {
+			return configPath
+		}
+	}
+
+	// Fall back to legacy location (~/.slack-shell/)
+	if legacyDir, err := GetLegacyConfigDir(); err == nil {
+		configPath := filepath.Join(legacyDir, "config.yaml")
+		if _, err := os.Stat(configPath); err == nil {
+			return configPath
+		}
+	}
+
+	return ""
 }
 
 func Load() (*Config, error) {
@@ -103,10 +141,8 @@ func Load() (*Config, error) {
 		cfg.ClientSecret = clientSecret
 	}
 
-	// Try config file
-	configDir, err := GetConfigDir()
-	if err == nil {
-		configPath := filepath.Join(configDir, "config.yaml")
+	// Try config file (new location first, then legacy)
+	if configPath := findConfigFile(); configPath != "" {
 		if data, err := os.ReadFile(configPath); err == nil {
 			var fileCfg Config
 			if err := yaml.Unmarshal(data, &fileCfg); err == nil {
@@ -218,23 +254,31 @@ func DefaultStartupConfig() *StartupConfig {
 }
 
 func LoadCredentials() (*Credentials, error) {
-	configDir, err := GetConfigDir()
-	if err != nil {
-		return nil, err
+	// Try new location first
+	if configDir, err := GetConfigDir(); err == nil {
+		credPath := filepath.Join(configDir, "credentials.json")
+		if data, err := os.ReadFile(credPath); err == nil {
+			var creds Credentials
+			if err := json.Unmarshal(data, &creds); err != nil {
+				return nil, err
+			}
+			return &creds, nil
+		}
 	}
 
-	credPath := filepath.Join(configDir, "credentials.json")
-	data, err := os.ReadFile(credPath)
-	if err != nil {
-		return nil, err
+	// Fall back to legacy location
+	if legacyDir, err := GetLegacyConfigDir(); err == nil {
+		credPath := filepath.Join(legacyDir, "credentials.json")
+		if data, err := os.ReadFile(credPath); err == nil {
+			var creds Credentials
+			if err := json.Unmarshal(data, &creds); err != nil {
+				return nil, err
+			}
+			return &creds, nil
+		}
 	}
 
-	var creds Credentials
-	if err := json.Unmarshal(data, &creds); err != nil {
-		return nil, err
-	}
-
-	return &creds, nil
+	return nil, fmt.Errorf("credentials not found")
 }
 
 func SaveCredentials(creds *Credentials) error {
@@ -258,13 +302,25 @@ func SaveCredentials(creds *Credentials) error {
 }
 
 func DeleteCredentials() error {
-	configDir, err := GetConfigDir()
-	if err != nil {
-		return err
+	var lastErr error
+
+	// Delete from new location
+	if configDir, err := GetConfigDir(); err == nil {
+		credPath := filepath.Join(configDir, "credentials.json")
+		if err := os.Remove(credPath); err != nil && !os.IsNotExist(err) {
+			lastErr = err
+		}
 	}
 
-	credPath := filepath.Join(configDir, "credentials.json")
-	return os.Remove(credPath)
+	// Also delete from legacy location
+	if legacyDir, err := GetLegacyConfigDir(); err == nil {
+		credPath := filepath.Join(legacyDir, "credentials.json")
+		if err := os.Remove(credPath); err != nil && !os.IsNotExist(err) {
+			lastErr = err
+		}
+	}
+
+	return lastErr
 }
 
 func (c *Config) HasOAuthConfig() bool {
@@ -278,7 +334,8 @@ func (c *Config) HasDirectToken() bool {
 // SampleConfigYAML returns a sample configuration file with comments
 func SampleConfigYAML() string {
 	return `# Slack Shell Configuration
-# Place this file at ~/.slack-shell/config.yaml
+# Place this file at ~/.config/slack-shell/config.yaml
+# (or $XDG_CONFIG_HOME/slack-shell/config.yaml)
 
 # ============================================================
 # Authentication

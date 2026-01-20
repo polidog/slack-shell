@@ -275,7 +275,7 @@ slack> cd @ali       # Tab押下 → @alice に補完
 
 ### 通知設定
 
-`~/.slack-shell/config.yaml` に `notifications` セクションを追加:
+`~/.config/slack-shell/config.yaml` に `notifications` セクションを追加:
 
 ```yaml
 notifications:
@@ -314,7 +314,7 @@ export SLACK_CLIENT_SECRET="your-client-secret"
 ./slack-shell
 ```
 
-または設定ファイル `~/.slack-shell/config.yaml`:
+または設定ファイル `~/.config/slack-shell/config.yaml`:
 ```yaml
 client_id: your-client-id
 client_secret: your-client-secret
@@ -343,7 +343,7 @@ export SLACK_TOKEN="xoxp-your-token"
 ./slack-shell logout
 
 # サンプル設定ファイルを生成
-./slack-shell config init                    # ~/.slack-shell/config.yaml に作成
+./slack-shell config init                    # ~/.config/slack-shell/config.yaml に作成
 ./slack-shell config init ~/work.yaml        # 指定パスに作成
 ./slack-shell config init ~/work.yaml -f     # 既存ファイルを上書き
 ```
@@ -396,7 +396,9 @@ export SLACK_APP_TOKEN="xapp-your-app-token"
 
 ## 設定ファイル
 
-`~/.slack-shell/config.yaml`:
+`~/.config/slack-shell/config.yaml`（または `$XDG_CONFIG_HOME/slack-shell/config.yaml`）:
+
+> **注意**: 後方互換性のため、`~/.slack-shell/config.yaml` もサポートされています。
 
 ```yaml
 # OAuth認証（推奨）
@@ -419,7 +421,7 @@ prompt:
 
 ## プロンプトのカスタマイズ
 
-`~/.slack-shell/config.yaml` でプロンプトの表示形式をカスタマイズできます：
+`~/.config/slack-shell/config.yaml` でプロンプトの表示形式をカスタマイズできます：
 
 ```yaml
 prompt:
@@ -461,7 +463,7 @@ prompt:
 
 ## 起動時のカスタマイズ
 
-`~/.slack-shell/config.yaml` で起動時のメッセージ、バナー、自動実行コマンドをカスタマイズできます：
+`~/.config/slack-shell/config.yaml` で起動時のメッセージ、バナー、自動実行コマンドをカスタマイズできます：
 
 ```yaml
 startup:

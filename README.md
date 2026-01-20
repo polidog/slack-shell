@@ -175,7 +175,7 @@ Tailing messages... (press 'q' or Ctrl+C to stop)
 ./slack-shell logout
 
 # Generate sample config file
-./slack-shell config init                    # Create at ~/.slack-shell/config.yaml
+./slack-shell config init                    # Create at ~/.config/slack-shell/config.yaml
 ./slack-shell config init ~/work.yaml        # Create at specified path
 ./slack-shell config init ~/work.yaml -f     # Overwrite if exists
 ```
@@ -297,7 +297,7 @@ Receive notifications when messages arrive in other channels.
 
 ### Configuration
 
-Add a `notifications` section to `~/.slack-shell/config.yaml`:
+Add a `notifications` section to `~/.config/slack-shell/config.yaml`:
 
 ```yaml
 notifications:
@@ -341,7 +341,9 @@ export SLACK_APP_TOKEN="xapp-your-app-token"
 
 ## Configuration File
 
-`~/.slack-shell/config.yaml`:
+`~/.config/slack-shell/config.yaml` (or `$XDG_CONFIG_HOME/slack-shell/config.yaml`):
+
+> **Note**: For backward compatibility, `~/.slack-shell/config.yaml` is also supported.
 
 ```yaml
 # OAuth authentication (recommended)
@@ -364,7 +366,7 @@ prompt:
 
 ## Prompt Customization
 
-Customize the prompt display with template variables in `~/.slack-shell/config.yaml`:
+Customize the prompt display with template variables in `~/.config/slack-shell/config.yaml`:
 
 ```yaml
 prompt:
@@ -406,7 +408,7 @@ prompt:
 
 ## Startup Customization
 
-Customize the startup message, banner, and auto-execute commands in `~/.slack-shell/config.yaml`:
+Customize the startup message, banner, and auto-execute commands in `~/.config/slack-shell/config.yaml`:
 
 ```yaml
 startup:
@@ -455,7 +457,7 @@ export SLACK_CLIENT_SECRET="your-client-secret"
 ./slack-shell
 ```
 
-Or config file `~/.slack-shell/config.yaml`:
+Or config file `~/.config/slack-shell/config.yaml`:
 ```yaml
 client_id: your-client-id
 client_secret: your-client-secret
