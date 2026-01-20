@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/polidog/slack-tui/internal/config"
+	"github.com/polidog/slack-shell/internal/config"
 )
 
 const (
@@ -158,9 +158,9 @@ func (o *OAuthFlow) handleRoot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!DOCTYPE html>
 <html>
-<head><title>Slack TUI - OAuth</title></head>
+<head><title>Slack Shell - OAuth</title></head>
 <body style="font-family: sans-serif; text-align: center; padding: 50px;">
-<h1>Slack TUI OAuth</h1>
+<h1>Slack Shell OAuth</h1>
 <p>認証を開始するには <a href="%s">こちら</a> をクリックしてください。</p>
 </body>
 </html>`, o.buildAuthURL())
@@ -198,7 +198,7 @@ func (o *OAuthFlow) handleCallback(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!DOCTYPE html>
 <html>
-<head><title>Slack TUI - 認証成功</title></head>
+<head><title>Slack Shell - 認証成功</title></head>
 <body style="font-family: sans-serif; text-align: center; padding: 50px;">
 <h1>✅ 認証成功!</h1>
 <p>ワークスペース: <strong>%s</strong></p>
@@ -215,7 +215,7 @@ func (o *OAuthFlow) sendError(w http.ResponseWriter, err error) {
 	w.WriteHeader(http.StatusBadRequest)
 	fmt.Fprintf(w, `<!DOCTYPE html>
 <html>
-<head><title>Slack TUI - エラー</title></head>
+<head><title>Slack Shell - エラー</title></head>
 <body style="font-family: sans-serif; text-align: center; padding: 50px;">
 <h1>❌ エラー</h1>
 <p>%s</p>
@@ -294,7 +294,7 @@ func generateTLSConfig() (*tls.Config, error) {
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			Organization: []string{"Slack TUI"},
+			Organization: []string{"Slack Shell"},
 			CommonName:   "localhost",
 		},
 		NotBefore:             time.Now(),

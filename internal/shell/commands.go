@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/polidog/slack-tui/internal/config"
-	"github.com/polidog/slack-tui/internal/slack"
+	"github.com/polidog/slack-shell/internal/config"
+	"github.com/polidog/slack-shell/internal/slack"
 )
 
 // Executor handles command execution
@@ -591,6 +591,37 @@ func (e *Executor) IsIMChannel(channelID string) bool {
 
 // GetCompletions returns completion candidates for cd command
 func (e *Executor) GetCompletions(prefix string) []string {
+	// Load channels if not yet loaded
+	if e.channels == nil {
+		if channels, err := e.client.GetChannels(); err == nil {
+			e.channels = channels
+		}
+	}
+
+	// Load DMs if not yet loaded
+	if e.dms == nil {
+		if dms, err := e.client.GetDMs(); err == nil {
+			e.dms = dms
+		}
+	}
+
+	// Load user names for DMs if not yet loaded
+	if len(e.dms) > 0 && len(e.userNames) == 0 {
+		userIDs := make([]string, 0, len(e.dms))
+		for _, dm := range e.dms {
+			if dm.UserID != "" {
+				userIDs = append(userIDs, dm.UserID)
+			}
+		}
+		if len(userIDs) > 0 {
+			if users, err := e.client.GetUsersInfo(userIDs); err == nil && users != nil {
+				for _, u := range *users {
+					e.userNames[u.ID] = u.Name
+				}
+			}
+		}
+	}
+
 	var candidates []string
 
 	// Determine what to complete based on prefix

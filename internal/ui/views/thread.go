@@ -6,9 +6,9 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/polidog/slack-tui/internal/keymap"
-	"github.com/polidog/slack-tui/internal/slack"
-	"github.com/polidog/slack-tui/internal/ui/styles"
+	"github.com/polidog/slack-shell/internal/keymap"
+	"github.com/polidog/slack-shell/internal/slack"
+	"github.com/polidog/slack-shell/internal/ui/styles"
 )
 
 type ThreadModel struct {

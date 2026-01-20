@@ -7,8 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/polidog/slack-tui/internal/notification"
-	"github.com/polidog/slack-tui/internal/slack"
+	"github.com/polidog/slack-shell/internal/notification"
+	"github.com/polidog/slack-shell/internal/slack"
 )
 
 var (
@@ -74,7 +74,7 @@ func (m *Model) SetRealtimeClient(rc *slack.RealtimeClient) {
 // Init initializes the model
 func (m *Model) Init() tea.Cmd {
 	// Show welcome message with workspace name
-	m.history = append(m.history, fmt.Sprintf("Welcome to Slack TUI - %s", m.executor.GetWorkspaceName()))
+	m.history = append(m.history, fmt.Sprintf("Welcome to Slack Shell - %s", m.executor.GetWorkspaceName()))
 	m.history = append(m.history, "Type 'help' for available commands.\n")
 
 	return textinput.Blink

@@ -1,4 +1,4 @@
-module github.com/polidog/slack-tui
+module github.com/polidog/slack-shell
 
 go 1.25.4
 

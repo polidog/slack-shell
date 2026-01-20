@@ -5,7 +5,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/polidog/slack-tui/internal/ui/styles"
+	"github.com/polidog/slack-shell/internal/ui/styles"
 )
 
 type InputModel struct {

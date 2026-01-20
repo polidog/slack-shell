@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/polidog/slack-tui/internal/keymap"
-	"github.com/polidog/slack-tui/internal/notification"
+	"github.com/polidog/slack-shell/internal/keymap"
+	"github.com/polidog/slack-shell/internal/notification"
 	"gopkg.in/yaml.v3"
 )
 
@@ -44,7 +44,7 @@ func GetConfigDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".slack-tui"), nil
+	return filepath.Join(homeDir, ".slack-shell"), nil
 }
 
 func Load() (*Config, error) {

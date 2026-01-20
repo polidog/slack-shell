@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/polidog/slack-tui/internal/app"
+	"github.com/polidog/slack-shell/internal/app"
 )
 
 func main() {

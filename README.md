@@ -1,4 +1,4 @@
-# Slack TUI
+# Slack Shell
 
 GoとBubble Teaで作られたターミナルベースのSlackクライアント。
 シェルコマンド風のインターフェースで直感的に操作できます。
@@ -25,12 +25,12 @@ GoとBubble Teaで作られたターミナルベースのSlackクライアント
 
 ```bash
 # Go installでインストール
-go install github.com/polidog/slack-tui/cmd/slack-tui@latest
+go install github.com/polidog/slack-shell/cmd/slack-shell@latest
 
 # または、ソースからビルド
-git clone https://github.com/polidog/slack-tui.git
-cd slack-tui
-go build ./cmd/slack-tui
+git clone https://github.com/polidog/slack-shell.git
+cd slack-shell
+go build ./cmd/slack-shell
 ```
 
 ### 2. Slack Appを作成
@@ -85,7 +85,7 @@ export SLACK_CLIENT_ID="あなたのClient ID"
 export SLACK_CLIENT_SECRET="あなたのClient Secret"
 
 # 起動
-./slack-tui
+./slack-shell
 ```
 
 ブラウザが自動で開き、Slackの認証ページが表示されます。
@@ -225,7 +225,7 @@ slack> cd @ali       # Tab押下 → @alice に補完
 |--------|------|
 | **ターミナルベル** | `\a` 文字でビープ音を鳴らす |
 | **デスクトップ通知** | OS標準の通知を表示（Linux/macOS/Windows対応） |
-| **ターミナルタイトル** | 未読数をタイトルに表示（例: `Slack TUI (3)`） |
+| **ターミナルタイトル** | 未読数をタイトルに表示（例: `Slack Shell (3)`） |
 | **ビジュアル通知** | 画面上部に通知エリアを表示 |
 
 ### 通知の動作
@@ -238,7 +238,7 @@ slack> cd @ali       # Tab押下 → @alice に補完
 
 ### 通知設定
 
-`~/.slack-tui/config.yaml` に `notifications` セクションを追加:
+`~/.slack-shell/config.yaml` に `notifications` セクションを追加:
 
 ```yaml
 notifications:
@@ -254,8 +254,8 @@ notifications:
 
   title:
     enabled: true            # タイトル更新の有効/無効
-    format: "Slack TUI (%d)" # 未読数表示フォーマット
-    base_title: "Slack TUI"  # 未読がない時のタイトル
+    format: "Slack Shell (%d)" # 未読数表示フォーマット
+    base_title: "Slack Shell"  # 未読がない時のタイトル
 
   visual:
     enabled: true            # ビジュアル通知の有効/無効
@@ -274,10 +274,10 @@ notifications:
 ```bash
 export SLACK_CLIENT_ID="your-client-id"
 export SLACK_CLIENT_SECRET="your-client-secret"
-./slack-tui
+./slack-shell
 ```
 
-または設定ファイル `~/.slack-tui/config.yaml`:
+または設定ファイル `~/.slack-shell/config.yaml`:
 ```yaml
 client_id: your-client-id
 client_secret: your-client-secret
@@ -287,17 +287,17 @@ client_secret: your-client-secret
 
 ```bash
 export SLACK_TOKEN="xoxp-your-token"
-./slack-tui
+./slack-shell
 ```
 
 ## コマンド
 
 ```bash
 # 通常起動
-./slack-tui
+./slack-shell
 
 # ログアウト（保存された認証情報を削除）
-./slack-tui logout
+./slack-shell logout
 ```
 
 ## リアルタイム更新（Socket Mode）
@@ -316,7 +316,7 @@ export SLACK_APP_TOKEN="xapp-your-app-token"
 
 ## 設定ファイル
 
-`~/.slack-tui/config.yaml`:
+`~/.slack-shell/config.yaml`:
 
 ```yaml
 # OAuth認証（推奨）
@@ -362,7 +362,7 @@ redirect_port: 8080
 ### ログアウトしたい
 
 ```bash
-./slack-tui logout
+./slack-shell logout
 ```
 
 ## 開発
@@ -370,7 +370,7 @@ redirect_port: 8080
 ### ビルド
 
 ```bash
-go build ./cmd/slack-tui
+go build ./cmd/slack-shell
 ```
 
 ### テスト
@@ -382,8 +382,8 @@ go test ./...
 ## ファイル構成
 
 ```
-slack-tui/
-├── cmd/slack-tui/main.go     # エントリーポイント
+slack-shell/
+├── cmd/slack-shell/main.go     # エントリーポイント
 ├── internal/
 │   ├── app/app.go            # アプリケーション初期化
 │   ├── config/config.go      # 設定管理

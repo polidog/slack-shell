@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/polidog/slack-tui/internal/slack"
+	"github.com/polidog/slack-shell/internal/slack"
 )
 
 // FormatChannelList formats a list of channels for display

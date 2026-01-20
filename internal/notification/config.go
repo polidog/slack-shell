@@ -53,8 +53,8 @@ func DefaultConfig() *Config {
 		},
 		Title: TitleConfig{
 			Enabled:   true,
-			Format:    "Slack TUI (%d)",
-			BaseTitle: "Slack TUI",
+			Format:    "Slack Shell (%d)",
+			BaseTitle: "Slack Shell",
 		},
 		Visual: VisualConfig{
 			Enabled:      true,

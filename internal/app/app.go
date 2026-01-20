@@ -4,11 +4,11 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/polidog/slack-tui/internal/config"
-	"github.com/polidog/slack-tui/internal/notification"
-	"github.com/polidog/slack-tui/internal/oauth"
-	"github.com/polidog/slack-tui/internal/shell"
-	"github.com/polidog/slack-tui/internal/slack"
+	"github.com/polidog/slack-shell/internal/config"
+	"github.com/polidog/slack-shell/internal/notification"
+	"github.com/polidog/slack-shell/internal/oauth"
+	"github.com/polidog/slack-shell/internal/shell"
+	"github.com/polidog/slack-shell/internal/slack"
 )
 
 type App struct {
@@ -91,7 +91,7 @@ func getToken(cfg *config.Config) (string, error) {
    export SLACK_CLIENT_ID="your-client-id"
    export SLACK_CLIENT_SECRET="your-client-secret"
 
-3. 設定ファイルを作成 (~/.slack-tui/config.yaml):
+3. 設定ファイルを作成 (~/.slack-shell/config.yaml):
    slack_token: xoxp-your-token
    または
    client_id: your-client-id
