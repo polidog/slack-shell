@@ -330,6 +330,52 @@ app_token: xapp-your-app-token
 
 # Callback port (default: 8080)
 redirect_port: 8080
+
+# Prompt customization (optional)
+prompt:
+  format: "{workspace} {location}> "
+```
+
+## Prompt Customization
+
+Customize the prompt display with template variables in `~/.slack-shell/config.yaml`:
+
+```yaml
+prompt:
+  format: "slack-shell > {workspace}{location}"
+```
+
+### Available Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{workspace}` | Workspace name | `MyCompany` |
+| `{location}` | Current channel/DM with prefix | `#general`, `@alice`, or empty |
+| `{channel}` | Channel name only (no prefix) | `general` |
+| `{user}` | User name only (no prefix) | `alice` |
+
+### Example Formats
+
+```yaml
+# Default format
+prompt:
+  format: "{workspace} {location}> "
+# Result: MyCompany #general>
+
+# Shell-style
+prompt:
+  format: "slack-shell > {workspace}{location}"
+# Result: slack-shell > MyCompany#general
+
+# Minimal
+prompt:
+  format: "{location}$ "
+# Result: #general$
+
+# With brackets
+prompt:
+  format: "[{workspace}:{channel}]$ "
+# Result: [MyCompany:general]$
 ```
 
 ## Authentication Methods

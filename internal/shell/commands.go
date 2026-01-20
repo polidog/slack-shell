@@ -18,19 +18,25 @@ type Executor struct {
 	userNames      map[string]string
 	currentChannel *slack.Channel
 	workspaceName  string
+	promptConfig   *config.PromptConfig
 }
 
 // NewExecutor creates a new command executor
-func NewExecutor(client *slack.Client) *Executor {
+func NewExecutor(client *slack.Client, promptConfig *config.PromptConfig) *Executor {
 	workspaceName := "slack"
 	if info, err := client.GetTeamInfo(); err == nil && info != nil {
 		workspaceName = info.Name
+	}
+
+	if promptConfig == nil {
+		promptConfig = config.DefaultPromptConfig()
 	}
 
 	return &Executor{
 		client:        client,
 		userNames:     make(map[string]string),
 		workspaceName: workspaceName,
+		promptConfig:  promptConfig,
 	}
 }
 
@@ -327,19 +333,37 @@ func (e *Executor) GetWorkspaceName() string {
 
 // GetPrompt returns the current prompt string
 func (e *Executor) GetPrompt() string {
-	if e.currentChannel == nil {
-		return fmt.Sprintf("%s> ", e.workspaceName)
-	}
+	return e.formatPrompt()
+}
 
-	if e.currentChannel.IsIM {
-		name := e.userNames[e.currentChannel.UserID]
-		if name == "" {
-			name = e.currentChannel.UserID
+// formatPrompt formats the prompt using the configured template
+func (e *Executor) formatPrompt() string {
+	format := e.promptConfig.Format
+
+	// Determine location, channel, and user values
+	var location, channel, user string
+	if e.currentChannel != nil {
+		if e.currentChannel.IsIM {
+			name := e.userNames[e.currentChannel.UserID]
+			if name == "" {
+				name = e.currentChannel.UserID
+			}
+			location = "@" + name
+			user = name
+		} else {
+			location = "#" + e.currentChannel.Name
+			channel = e.currentChannel.Name
 		}
-		return fmt.Sprintf("%s @%s> ", e.workspaceName, name)
 	}
 
-	return fmt.Sprintf("%s #%s> ", e.workspaceName, e.currentChannel.Name)
+	// Replace template variables
+	result := format
+	result = strings.ReplaceAll(result, "{workspace}", e.workspaceName)
+	result = strings.ReplaceAll(result, "{location}", location)
+	result = strings.ReplaceAll(result, "{channel}", channel)
+	result = strings.ReplaceAll(result, "{user}", user)
+
+	return result
 }
 
 func (e *Executor) executeSource(cmd Command) ExecuteResult {

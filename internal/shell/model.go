@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/polidog/slack-shell/internal/config"
 	"github.com/polidog/slack-shell/internal/notification"
 	"github.com/polidog/slack-shell/internal/slack"
 )
@@ -50,8 +51,8 @@ type Model struct {
 }
 
 // NewModel creates a new shell model
-func NewModel(client *slack.Client, notifyMgr *notification.Manager) *Model {
-	executor := NewExecutor(client)
+func NewModel(client *slack.Client, notifyMgr *notification.Manager, promptConfig *config.PromptConfig) *Model {
+	executor := NewExecutor(client, promptConfig)
 
 	ti := textinput.New()
 	ti.Prompt = promptStyle.Render(executor.GetPrompt())

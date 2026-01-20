@@ -385,6 +385,52 @@ app_token: xapp-your-app-token
 
 # コールバックポート（デフォルト: 8080）
 redirect_port: 8080
+
+# プロンプトのカスタマイズ（オプション）
+prompt:
+  format: "{workspace} {location}> "
+```
+
+## プロンプトのカスタマイズ
+
+`~/.slack-shell/config.yaml` でプロンプトの表示形式をカスタマイズできます：
+
+```yaml
+prompt:
+  format: "slack-shell > {workspace}{location}"
+```
+
+### 使用可能な変数
+
+| 変数 | 説明 | 例 |
+|------|------|-----|
+| `{workspace}` | ワークスペース名 | `MyCompany` |
+| `{location}` | 現在のチャンネル/DM（プレフィックス付き） | `#general`, `@alice`, または空 |
+| `{channel}` | チャンネル名のみ（プレフィックスなし） | `general` |
+| `{user}` | ユーザー名のみ（プレフィックスなし） | `alice` |
+
+### フォーマット例
+
+```yaml
+# デフォルト
+prompt:
+  format: "{workspace} {location}> "
+# 結果: MyCompany #general>
+
+# シェル風
+prompt:
+  format: "slack-shell > {workspace}{location}"
+# 結果: slack-shell > MyCompany#general
+
+# シンプル
+prompt:
+  format: "{location}$ "
+# 結果: #general$
+
+# 括弧付き
+prompt:
+  format: "[{workspace}:{channel}]$ "
+# 結果: [MyCompany:general]$
 ```
 
 ## トラブルシューティング

@@ -27,6 +27,42 @@ type Config struct {
 
 	// Notifications
 	Notifications *notification.Config `yaml:"notifications"`
+
+	// Prompt customization
+	Prompt *PromptConfig `yaml:"prompt"`
+
+	// Startup customization
+	Startup *StartupConfig `yaml:"startup"`
+}
+
+// PromptConfig defines prompt customization settings
+type PromptConfig struct {
+	// Format is the prompt template string
+	// Available variables:
+	//   {workspace} - workspace name
+	//   {location}  - #channel, @user, or empty for root
+	//   {channel}   - channel name only (without #)
+	//   {user}      - user name only (without @)
+	// Default: "{workspace} {location}> "
+	Format string `yaml:"format"`
+}
+
+// StartupConfig defines startup customization settings
+type StartupConfig struct {
+	// Message is a single line welcome message
+	// Available variables:
+	//   {workspace} - workspace name
+	// Default: "Welcome to Slack Shell - {workspace}"
+	Message string `yaml:"message"`
+
+	// Banner is a multi-line banner displayed at startup (overrides Message if set)
+	// Available variables:
+	//   {workspace} - workspace name
+	Banner string `yaml:"banner"`
+
+	// InitCommands are commands to execute automatically at startup
+	// Example: ["cd #general", "ls"]
+	InitCommands []string `yaml:"init_commands"`
 }
 
 type Credentials struct {
@@ -97,6 +133,14 @@ func Load() (*Config, error) {
 				if fileCfg.Notifications != nil {
 					cfg.Notifications = fileCfg.Notifications
 				}
+				// Merge prompt config
+				if fileCfg.Prompt != nil {
+					cfg.Prompt = fileCfg.Prompt
+				}
+				// Merge startup config
+				if fileCfg.Startup != nil {
+					cfg.Startup = fileCfg.Startup
+				}
 			}
 		}
 	}
@@ -138,6 +182,21 @@ func (c *Config) GetNotificationConfig() *notification.Config {
 		cfg.Merge(c.Notifications)
 	}
 	return cfg
+}
+
+// GetPromptConfig returns prompt config with defaults
+func (c *Config) GetPromptConfig() *PromptConfig {
+	if c.Prompt != nil && c.Prompt.Format != "" {
+		return c.Prompt
+	}
+	return DefaultPromptConfig()
+}
+
+// DefaultPromptConfig returns the default prompt configuration
+func DefaultPromptConfig() *PromptConfig {
+	return &PromptConfig{
+		Format: "{workspace} {location}> ",
+	}
 }
 
 func LoadCredentials() (*Credentials, error) {
