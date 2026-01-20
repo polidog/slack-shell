@@ -37,12 +37,20 @@ type Model struct {
 	height              int
 	ready               bool
 	tailMode            bool
+
+	// Tab completion
+	completionCandidates []string
+	completionIndex      int
+	completionActive     bool
+	originalInput        string
 }
 
 // NewModel creates a new shell model
 func NewModel(client *slack.Client, notifyMgr *notification.Manager) *Model {
+	executor := NewExecutor(client)
+
 	ti := textinput.New()
-	ti.Prompt = promptStyle.Render("slack> ")
+	ti.Prompt = promptStyle.Render(executor.GetPrompt())
 	ti.Focus()
 	ti.CharLimit = 1000
 	ti.Width = 80
@@ -50,7 +58,7 @@ func NewModel(client *slack.Client, notifyMgr *notification.Manager) *Model {
 	return &Model{
 		client:              client,
 		notificationManager: notifyMgr,
-		executor:            NewExecutor(client),
+		executor:            executor,
 		input:               ti,
 		history:             []string{},
 		historyIndex:        -1,
@@ -65,8 +73,8 @@ func (m *Model) SetRealtimeClient(rc *slack.RealtimeClient) {
 
 // Init initializes the model
 func (m *Model) Init() tea.Cmd {
-	// Show welcome message and run initial ls
-	m.history = append(m.history, "Welcome to Slack TUI (Shell Mode)")
+	// Show welcome message with workspace name
+	m.history = append(m.history, fmt.Sprintf("Welcome to Slack TUI - %s", m.executor.GetWorkspaceName()))
 	m.history = append(m.history, "Type 'help' for available commands.\n")
 
 	return textinput.Blink
@@ -103,13 +111,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case tea.KeyEnter:
+			m.resetCompletion()
 			return m.executeCommand()
 
 		case tea.KeyUp:
+			m.resetCompletion()
 			return m.navigateHistory(-1)
 
 		case tea.KeyDown:
+			m.resetCompletion()
 			return m.navigateHistory(1)
+
+		case tea.KeyTab:
+			return m.handleTabCompletion()
+
+		default:
+			// Reset completion on any other key
+			if m.completionActive {
+				m.resetCompletion()
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -278,6 +298,50 @@ func (m *Model) navigateHistory(direction int) (tea.Model, tea.Cmd) {
 	m.input.CursorEnd()
 
 	return m, nil
+}
+
+func (m *Model) handleTabCompletion() (tea.Model, tea.Cmd) {
+	input := m.input.Value()
+
+	// Only complete "cd " commands
+	if !strings.HasPrefix(input, "cd ") {
+		return m, nil
+	}
+
+	// Get the part after "cd "
+	prefix := strings.TrimPrefix(input, "cd ")
+
+	if !m.completionActive {
+		// First Tab press - initialize completion
+		m.originalInput = input
+		m.completionCandidates = m.executor.GetCompletions(prefix)
+		m.completionIndex = 0
+		m.completionActive = true
+
+		if len(m.completionCandidates) == 0 {
+			m.resetCompletion()
+			return m, nil
+		}
+	} else {
+		// Subsequent Tab press - cycle to next candidate
+		m.completionIndex = (m.completionIndex + 1) % len(m.completionCandidates)
+	}
+
+	// Apply current completion
+	if len(m.completionCandidates) > 0 {
+		completed := "cd " + m.completionCandidates[m.completionIndex]
+		m.input.SetValue(completed)
+		m.input.CursorEnd()
+	}
+
+	return m, nil
+}
+
+func (m *Model) resetCompletion() {
+	m.completionActive = false
+	m.completionCandidates = nil
+	m.completionIndex = 0
+	m.originalInput = ""
 }
 
 // View renders the UI

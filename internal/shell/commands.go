@@ -17,13 +17,20 @@ type Executor struct {
 	dms            []slack.Channel
 	userNames      map[string]string
 	currentChannel *slack.Channel
+	workspaceName  string
 }
 
 // NewExecutor creates a new command executor
 func NewExecutor(client *slack.Client) *Executor {
+	workspaceName := "slack"
+	if info, err := client.GetTeamInfo(); err == nil && info != nil {
+		workspaceName = info.Name
+	}
+
 	return &Executor{
-		client:    client,
-		userNames: make(map[string]string),
+		client:        client,
+		userNames:     make(map[string]string),
+		workspaceName: workspaceName,
 	}
 }
 
@@ -308,10 +315,15 @@ func (e *Executor) GetCurrentChannel() *slack.Channel {
 	return e.currentChannel
 }
 
+// GetWorkspaceName returns the current workspace name
+func (e *Executor) GetWorkspaceName() string {
+	return e.workspaceName
+}
+
 // GetPrompt returns the current prompt string
 func (e *Executor) GetPrompt() string {
 	if e.currentChannel == nil {
-		return "slack> "
+		return fmt.Sprintf("%s> ", e.workspaceName)
 	}
 
 	if e.currentChannel.IsIM {
@@ -319,10 +331,10 @@ func (e *Executor) GetPrompt() string {
 		if name == "" {
 			name = e.currentChannel.UserID
 		}
-		return fmt.Sprintf("@%s> ", name)
+		return fmt.Sprintf("%s @%s> ", e.workspaceName, name)
 	}
 
-	return fmt.Sprintf("#%s> ", e.currentChannel.Name)
+	return fmt.Sprintf("%s #%s> ", e.workspaceName, e.currentChannel.Name)
 }
 
 func (e *Executor) executeSource(cmd Command) ExecuteResult {
@@ -390,6 +402,12 @@ func (e *Executor) SwitchClient(client *slack.Client) {
 	e.dms = nil
 	e.userNames = make(map[string]string)
 	e.currentChannel = nil
+
+	// Update workspace name
+	e.workspaceName = "slack"
+	if info, err := client.GetTeamInfo(); err == nil && info != nil {
+		e.workspaceName = info.Name
+	}
 }
 
 // HandleIncomingMessage handles a real-time message
@@ -564,4 +582,50 @@ func (e *Executor) IsIMChannel(channelID string) bool {
 		}
 	}
 	return false
+}
+
+// GetCompletions returns completion candidates for cd command
+func (e *Executor) GetCompletions(prefix string) []string {
+	var candidates []string
+
+	// Determine what to complete based on prefix
+	showChannels := true
+	showUsers := true
+	searchTerm := prefix
+
+	if strings.HasPrefix(prefix, "#") {
+		showUsers = false
+		searchTerm = strings.TrimPrefix(prefix, "#")
+	} else if strings.HasPrefix(prefix, "@") {
+		showChannels = false
+		searchTerm = strings.TrimPrefix(prefix, "@")
+	}
+
+	searchTerm = strings.ToLower(searchTerm)
+
+	// Add channel candidates
+	if showChannels && e.channels != nil {
+		for _, ch := range e.channels {
+			name := "#" + ch.Name
+			if searchTerm == "" || strings.HasPrefix(strings.ToLower(ch.Name), searchTerm) {
+				candidates = append(candidates, name)
+			}
+		}
+	}
+
+	// Add user candidates (from DMs)
+	if showUsers && e.dms != nil {
+		for _, dm := range e.dms {
+			userName := e.userNames[dm.UserID]
+			if userName == "" {
+				continue
+			}
+			name := "@" + userName
+			if searchTerm == "" || strings.HasPrefix(strings.ToLower(userName), searchTerm) {
+				candidates = append(candidates, name)
+			}
+		}
+	}
+
+	return candidates
 }
