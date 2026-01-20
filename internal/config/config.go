@@ -400,33 +400,57 @@ notifications:
 `
 }
 
-// InitConfig creates a sample config file at the default location
-func InitConfig(force bool) error {
-	configDir, err := GetConfigDir()
-	if err != nil {
-		return err
-	}
+// InitConfig creates a sample config file at the specified path
+// If path is empty, uses the default location (~/.slack-shell/config.yaml)
+func InitConfig(path string, force bool) (string, error) {
+	var configPath string
 
-	// Create config directory if it doesn't exist
-	if err := os.MkdirAll(configDir, 0700); err != nil {
-		return err
-	}
+	if path == "" {
+		// Use default location
+		configDir, err := GetConfigDir()
+		if err != nil {
+			return "", err
+		}
 
-	configPath := filepath.Join(configDir, "config.yaml")
+		// Create config directory if it doesn't exist
+		if err := os.MkdirAll(configDir, 0700); err != nil {
+			return "", err
+		}
+
+		configPath = filepath.Join(configDir, "config.yaml")
+	} else {
+		// Use specified path
+		configPath = path
+
+		// Expand ~ to home directory
+		if len(configPath) > 0 && configPath[0] == '~' {
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return "", err
+			}
+			configPath = filepath.Join(homeDir, configPath[1:])
+		}
+
+		// Create parent directory if it doesn't exist
+		parentDir := filepath.Dir(configPath)
+		if err := os.MkdirAll(parentDir, 0755); err != nil {
+			return "", err
+		}
+	}
 
 	// Check if file already exists
 	if !force {
 		if _, err := os.Stat(configPath); err == nil {
-			return fmt.Errorf("config file already exists at %s (use --force to overwrite)", configPath)
+			return "", fmt.Errorf("config file already exists at %s (use --force to overwrite)", configPath)
 		}
 	}
 
 	// Write sample config
 	if err := os.WriteFile(configPath, []byte(SampleConfigYAML()), 0600); err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return configPath, nil
 }
 
 // GetConfigPath returns the path to the config file

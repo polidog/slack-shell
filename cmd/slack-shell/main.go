@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/polidog/slack-shell/internal/app"
+	"github.com/polidog/slack-shell/internal/config"
 )
 
 func main() {
@@ -14,6 +15,41 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+		return
+	}
+
+	// Check for config command
+	if len(os.Args) > 1 && os.Args[1] == "config" {
+		if len(os.Args) > 2 && os.Args[2] == "init" {
+			// Parse arguments: config init [path] [--force|-f]
+			var path string
+			var force bool
+			for _, arg := range os.Args[3:] {
+				if arg == "--force" || arg == "-f" {
+					force = true
+				} else if path == "" {
+					path = arg
+				}
+			}
+
+			configPath, err := config.InitConfig(path, force)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Config file created at %s\n", configPath)
+			return
+		}
+		// Show config subcommand help
+		fmt.Println("Usage: slack-shell config <subcommand>")
+		fmt.Println("")
+		fmt.Println("Subcommands:")
+		fmt.Println("  init [path] [--force]  Create a sample config file")
+		fmt.Println("")
+		fmt.Println("Examples:")
+		fmt.Println("  slack-shell config init                    # Create at ~/.slack-shell/config.yaml")
+		fmt.Println("  slack-shell config init ~/work.yaml        # Create at specified path")
+		fmt.Println("  slack-shell config init ~/work.yaml -f     # Overwrite if exists")
 		return
 	}
 
