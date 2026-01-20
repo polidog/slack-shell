@@ -80,7 +80,7 @@ type ErrorMsg struct {
 }
 
 func NewModel(client *slack.Client, km *keymap.Keymap) Model {
-	return Model{
+	m := Model{
 		slackClient: client,
 		keymap:      km,
 		sidebar:     views.NewSidebarModel(km),
@@ -91,6 +91,8 @@ func NewModel(client *slack.Client, km *keymap.Keymap) Model {
 		userCache:   make(map[string]string),
 		connected:   true,
 	}
+	m.updateFocus()
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
@@ -110,6 +112,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateLayout()
 
 	case tea.KeyMsg:
+		// Debug: show key press
+		m.statusMessage = fmt.Sprintf("Key: %s", msg.String())
+
 		// Force quit always works
 		if m.keymap.MatchKey(msg, keymap.ActionForceQuit) {
 			return m, tea.Quit
@@ -383,7 +388,9 @@ func (m Model) renderStatusBar() string {
 		statusStyle = styles.StatusDisconnectedStyle
 	}
 
-	status := statusStyle.Render(statusIcon) + " " + m.statusMessage
+	// Debug: show focus state
+	focusName := []string{"Sidebar", "Messages", "Input", "Thread"}[m.focus]
+	status := statusStyle.Render(statusIcon) + " " + m.statusMessage + fmt.Sprintf(" [Focus:%s,SB:%v,%s]", focusName, m.sidebar.IsFocused(), m.sidebar.DebugInfo())
 
 	// Use keybindings from keymap for help text
 	km := m.keymap

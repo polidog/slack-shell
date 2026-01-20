@@ -2,10 +2,16 @@ package oauth
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/url"
 	"os/exec"
@@ -84,18 +90,26 @@ func NewOAuthFlow(cfg *config.Config) (*OAuthFlow, error) {
 }
 
 func (o *OAuthFlow) Start() (*config.Credentials, error) {
-	// Start local HTTP server
+	// Generate self-signed certificate for HTTPS
+	tlsConfig, err := generateTLSConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate TLS config: %w", err)
+	}
+
+	// Start local HTTPS server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", o.handleCallback)
 	mux.HandleFunc("/", o.handleRoot)
 
 	o.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", o.redirectPort),
-		Handler: mux,
+		Addr:      fmt.Sprintf(":%d", o.redirectPort),
+		Handler:   mux,
+		TLSConfig: tlsConfig,
 	}
 
 	go func() {
-		if err := o.server.ListenAndServe(); err != http.ErrServerClosed {
+		// ListenAndServeTLS with empty cert/key paths uses TLSConfig
+		if err := o.server.ListenAndServeTLS("", ""); err != http.ErrServerClosed {
 			o.resultChan <- &OAuthResult{Error: err}
 		}
 	}()
@@ -107,6 +121,8 @@ func (o *OAuthFlow) Start() (*config.Credentials, error) {
 	authURL := o.buildAuthURL()
 	fmt.Printf("\n認証のためブラウザを開いています...\n")
 	fmt.Printf("自動で開かない場合は以下のURLにアクセスしてください:\n%s\n\n", authURL)
+	fmt.Printf("⚠️  ブラウザで「この接続は安全ではありません」と表示された場合:\n")
+	fmt.Printf("   「詳細設定」→「localhostにアクセスする」をクリックしてください\n\n")
 
 	if err := openBrowser(authURL); err != nil {
 		fmt.Printf("ブラウザを開けませんでした: %v\n", err)
@@ -130,9 +146,8 @@ func (o *OAuthFlow) Start() (*config.Credentials, error) {
 func (o *OAuthFlow) buildAuthURL() string {
 	params := url.Values{}
 	params.Set("client_id", o.clientID)
-	params.Set("scope", strings.Join(requiredScopes, ","))
 	params.Set("user_scope", strings.Join(requiredScopes, ","))
-	params.Set("redirect_uri", fmt.Sprintf("http://localhost:%d/callback", o.redirectPort))
+	params.Set("redirect_uri", fmt.Sprintf("https://localhost:%d/callback", o.redirectPort))
 	params.Set("state", o.state)
 
 	return fmt.Sprintf("%s?%s", slackAuthorizeURL, params.Encode())
@@ -215,7 +230,7 @@ func (o *OAuthFlow) exchangeCodeForToken(code string) (*config.Credentials, erro
 	data.Set("client_id", o.clientID)
 	data.Set("client_secret", o.clientSecret)
 	data.Set("code", code)
-	data.Set("redirect_uri", fmt.Sprintf("http://localhost:%d/callback", o.redirectPort))
+	data.Set("redirect_uri", fmt.Sprintf("https://localhost:%d/callback", o.redirectPort))
 
 	resp, err := http.PostForm(slackTokenURL, data)
 	if err != nil {
@@ -259,6 +274,51 @@ func generateState() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+// generateTLSConfig creates a self-signed certificate for localhost HTTPS
+func generateTLSConfig() (*tls.Config, error) {
+	// Generate private key
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate private key: %w", err)
+	}
+
+	// Create certificate template
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate serial number: %w", err)
+	}
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"Slack TUI"},
+			CommonName:   "localhost",
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(24 * time.Hour), // Valid for 24 hours
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		DNSNames:              []string{"localhost"},
+	}
+
+	// Create certificate
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create certificate: %w", err)
+	}
+
+	// Create TLS certificate
+	cert := tls.Certificate{
+		Certificate: [][]byte{certDER},
+		PrivateKey:  privateKey,
+	}
+
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+	}, nil
 }
 
 func openBrowser(url string) error {

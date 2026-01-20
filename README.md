@@ -61,7 +61,7 @@ go build ./cmd/slack-tui
 2. **Add New Redirect URL** をクリック
 3. 以下を入力して **Add** → **Save URLs**:
    ```
-   http://localhost:8080/callback
+   https://localhost:8080/callback
    ```
 
 ### 5. Client IDとSecretを取得
@@ -84,6 +84,9 @@ export SLACK_CLIENT_SECRET="あなたのClient Secret"
 
 ブラウザが自動で開き、Slackの認証ページが表示されます。
 **許可する** をクリックすると認証完了です。
+
+> ⚠️ **注意**: 認証コールバック時にブラウザで「この接続は安全ではありません」と表示される場合があります。
+> これは自己署名証明書を使用しているためです。「詳細設定」→「localhostにアクセスする」をクリックして続行してください。
 
 ## 基本的な使い方
 

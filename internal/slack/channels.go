@@ -17,11 +17,11 @@ type Channel struct {
 func (c *Client) GetChannels() ([]Channel, error) {
 	var channels []Channel
 
-	// Get public and private channels
+	// Get public and private channels that user is a member of
 	params := &slack.GetConversationsParameters{
 		Types:           []string{"public_channel", "private_channel"},
 		ExcludeArchived: true,
-		Limit:           1000,
+		Limit:           200,
 	}
 
 	convs, cursor, err := c.api.GetConversations(params)
@@ -30,22 +30,8 @@ func (c *Client) GetChannels() ([]Channel, error) {
 	}
 
 	for _, conv := range convs {
-		channels = append(channels, Channel{
-			ID:        conv.ID,
-			Name:      conv.Name,
-			IsChannel: !conv.IsPrivate,
-			IsPrivate: conv.IsPrivate,
-		})
-	}
-
-	// Handle pagination
-	for cursor != "" {
-		params.Cursor = cursor
-		convs, cursor, err = c.api.GetConversations(params)
-		if err != nil {
-			break
-		}
-		for _, conv := range convs {
+		// Only include channels where user is a member
+		if conv.IsMember {
 			channels = append(channels, Channel{
 				ID:        conv.ID,
 				Name:      conv.Name,
@@ -55,31 +41,6 @@ func (c *Client) GetChannels() ([]Channel, error) {
 		}
 	}
 
-	return channels, nil
-}
-
-func (c *Client) GetDMs() ([]Channel, error) {
-	var channels []Channel
-
-	params := &slack.GetConversationsParameters{
-		Types: []string{"im"},
-		Limit: 1000,
-	}
-
-	convs, cursor, err := c.api.GetConversations(params)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, conv := range convs {
-		channels = append(channels, Channel{
-			ID:     conv.ID,
-			Name:   conv.User,
-			IsIM:   true,
-			UserID: conv.User,
-		})
-	}
-
 	// Handle pagination
 	for cursor != "" {
 		params.Cursor = cursor
@@ -88,6 +49,37 @@ func (c *Client) GetDMs() ([]Channel, error) {
 			break
 		}
 		for _, conv := range convs {
+			if conv.IsMember {
+				channels = append(channels, Channel{
+					ID:        conv.ID,
+					Name:      conv.Name,
+					IsChannel: !conv.IsPrivate,
+					IsPrivate: conv.IsPrivate,
+				})
+			}
+		}
+	}
+
+	return channels, nil
+}
+
+func (c *Client) GetDMs() ([]Channel, error) {
+	var channels []Channel
+
+	// Get only recent/open DMs (limit to 50)
+	params := &slack.GetConversationsParameters{
+		Types: []string{"im"},
+		Limit: 50,
+	}
+
+	convs, _, err := c.api.GetConversations(params)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, conv := range convs {
+		// Only include open/active DMs
+		if conv.IsOpen {
 			channels = append(channels, Channel{
 				ID:     conv.ID,
 				Name:   conv.User,
@@ -145,5 +137,30 @@ func (c *Client) GetUserInfo(userID string) (*slack.User, error) {
 }
 
 func (c *Client) GetUsersInfo(userIDs []string) (*[]slack.User, error) {
-	return c.api.GetUsersInfo(userIDs...)
+	if len(userIDs) == 0 {
+		return &[]slack.User{}, nil
+	}
+
+	// Slack API has a limit on how many users can be fetched at once
+	// Process in batches of 30 to avoid "too_many_users" error
+	const batchSize = 30
+	var allUsers []slack.User
+
+	for i := 0; i < len(userIDs); i += batchSize {
+		end := i + batchSize
+		if end > len(userIDs) {
+			end = len(userIDs)
+		}
+
+		batch := userIDs[i:end]
+		users, err := c.api.GetUsersInfo(batch...)
+		if err != nil {
+			return nil, err
+		}
+		if users != nil {
+			allUsers = append(allUsers, *users...)
+		}
+	}
+
+	return &allUsers, nil
 }
