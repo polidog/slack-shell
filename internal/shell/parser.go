@@ -21,6 +21,7 @@ const (
 	CmdExit
 	CmdSource
 	CmdGrep
+	CmdBrowse
 )
 
 // Pipeline represents a series of commands connected by pipes
@@ -112,6 +113,8 @@ func parseCommandType(s string) CommandType {
 		return CmdSource
 	case "grep":
 		return CmdGrep
+	case "browse":
+		return CmdBrowse
 	default:
 		return CmdUnknown
 	}

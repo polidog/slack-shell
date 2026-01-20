@@ -134,6 +134,8 @@ func FormatHelp() string {
   cat -n 50       Show 50 messages
   tail            Stream new messages (press 'q' to stop)
   tail -n 10      Show last 10 messages, then stream
+  browse          Interactive message browser
+                  (j/k: navigate, Enter: view thread, r: reply, q: exit)
   send <message>  Send a message
   pwd             Show current channel
   source <file>   Switch workspace using config file

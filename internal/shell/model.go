@@ -38,6 +38,10 @@ type Model struct {
 	ready               bool
 	tailMode            bool
 
+	// Browse mode
+	browseMode  bool
+	browseModel *BrowseModel
+
 	// Tab completion
 	completionCandidates []string
 	completionIndex      int
@@ -86,6 +90,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Handle browse mode key events
+		if m.browseMode {
+			// Check for exit condition first
+			if m.browseModel.ShouldExit(msg) {
+				m.browseMode = false
+				m.browseModel = nil
+				m.history = append(m.history, tailStyle.Render("Exited browse mode."))
+				m.input.Focus()
+				return m, nil
+			}
+			m.browseModel, cmd = m.browseModel.Update(msg)
+			return m, cmd
+		}
+
 		// Handle tail mode key events
 		if m.tailMode {
 			switch msg.Type {
@@ -137,6 +155,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.input.Width = msg.Width - 10
 		m.ready = true
+		// Update browse model dimensions if active
+		if m.browseMode && m.browseModel != nil {
+			m.browseModel, cmd = m.browseModel.Update(msg)
+			return m, cmd
+		}
+
+	// Handle browse mode messages
+	case MessagesLoadedMsg, ThreadLoadedMsg, ReplySentMsg:
+		if m.browseMode && m.browseModel != nil {
+			m.browseModel, cmd = m.browseModel.Update(msg)
+			return m, cmd
+		}
 
 	case IncomingMessageMsg:
 		slackMsg := slack.IncomingMessage(msg)
@@ -176,7 +206,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if !m.tailMode {
+	if !m.tailMode && !m.browseMode {
 		m.input, cmd = m.input.Update(msg)
 	}
 	return m, cmd
@@ -207,6 +237,11 @@ func (m *Model) executeCommand() (tea.Model, tea.Cmd) {
 			// Handle tail command specially
 			if parsedCmd.Type == CmdTail {
 				return m.startTailMode(parsedCmd)
+			}
+
+			// Handle browse command specially
+			if parsedCmd.Type == CmdBrowse {
+				return m.startBrowseMode(parsedCmd)
 			}
 
 			result = m.executor.Execute(parsedCmd)
@@ -275,6 +310,33 @@ func (m *Model) startTailMode(cmd Command) (tea.Model, tea.Cmd) {
 	m.input.SetValue("")
 
 	return m, nil
+}
+
+func (m *Model) startBrowseMode(cmd Command) (tea.Model, tea.Cmd) {
+	currentChannel := m.executor.GetCurrentChannel()
+	if currentChannel == nil {
+		m.history = append(m.history, errorStyle.Render("Not in a channel. Use 'cd #channel' first."))
+		m.input.SetValue("")
+		return m, nil
+	}
+
+	channelName := currentChannel.Name
+	if currentChannel.IsIM {
+		if name, ok := m.executor.userNames[currentChannel.UserID]; ok {
+			channelName = name
+		} else {
+			channelName = currentChannel.UserID
+		}
+	}
+
+	m.browseModel = NewBrowseModel(m.client, currentChannel.ID, channelName, m.executor.userNames)
+	m.browseModel.width = m.width
+	m.browseModel.height = m.height
+	m.browseMode = true
+	m.input.Blur()
+	m.input.SetValue("")
+
+	return m, m.browseModel.Init()
 }
 
 func (m *Model) navigateHistory(direction int) (tea.Model, tea.Cmd) {
@@ -348,6 +410,11 @@ func (m *Model) resetCompletion() {
 func (m *Model) View() string {
 	if !m.ready {
 		return "Loading..."
+	}
+
+	// Browse mode takes over the entire screen
+	if m.browseMode && m.browseModel != nil {
+		return m.browseModel.View()
 	}
 
 	var sb strings.Builder

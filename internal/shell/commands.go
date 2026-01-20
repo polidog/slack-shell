@@ -521,6 +521,8 @@ func getCommandName(t CommandType) string {
 		return "source"
 	case CmdGrep:
 		return "grep"
+	case CmdBrowse:
+		return "browse"
 	default:
 		return "unknown"
 	}
