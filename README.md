@@ -13,6 +13,7 @@ Navigate Slack with familiar shell commands.
 - Browse channels and direct messages
 - View and send messages
 - Real-time message streaming with `tail` command
+- **`browse` command** - Interactive message browser with thread view and reply support
 - Real-time updates via Socket Mode (optional)
 - **OAuth authentication** - Easy browser-based login
 - **Shell-like UI** - Familiar command interface
@@ -110,6 +111,7 @@ slack> cat                   # Show messages (default 20)
 slack> cat -n 50             # Show 50 messages
 slack> tail                  # Stream new messages in real-time
 slack> tail -n 10            # Show last 10, then stream
+slack> browse                # Interactive message browser
 slack> send Hello world      # Send a message
 slack> pwd                   # Show current channel
 slack> source ~/work.yaml    # Switch workspace
@@ -191,7 +193,29 @@ Useful for scripting and cron jobs.
 | `↑` / `↓` | Navigate command history |
 | `Tab` | Auto-complete channel/user names for `cd` |
 | `Ctrl+C` | Exit (or stop tail mode) |
-| `q` | Stop tail mode |
+| `q` | Stop tail/browse mode |
+| `j` / `k` | Navigate messages in browse mode |
+| `Enter` | View thread in browse mode |
+| `r` | Reply in browse mode |
+
+## Browse Command
+
+The `browse` command provides an interactive interface for browsing and replying to messages.
+
+```bash
+#general> browse         # Start interactive browser
+```
+
+**Browse mode key bindings:**
+
+| Key | Action |
+|-----|--------|
+| `↑` / `k` | Move to previous message |
+| `↓` / `j` | Move to next message |
+| `Enter` | View thread replies |
+| `r` | Reply to selected message (creates/extends thread) |
+| `Esc` | Close thread view / cancel input |
+| `q` | Exit browse mode |
 
 ## Tab Completion
 
@@ -400,6 +424,7 @@ slack-shell/
 │       ├── model.go
 │       ├── commands.go
 │       ├── parser.go
+│       ├── browse.go
 │       └── output.go
 ├── go.mod
 ├── go.sum
