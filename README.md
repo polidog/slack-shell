@@ -173,6 +173,27 @@ Tailing messages... (press 'q' or Ctrl+C to stop)
 
 # Logout (delete saved credentials)
 ./slack-shell logout
+
+# Generate sample config file
+./slack-shell config init                    # Create at ~/.slack-shell/config.yaml
+./slack-shell config init ~/work.yaml        # Create at specified path
+./slack-shell config init ~/work.yaml -f     # Overwrite if exists
+```
+
+### config init
+
+Generate a sample configuration file with all available options documented.
+
+```bash
+# Create default config
+./slack-shell config init
+
+# Create workspace-specific config for use with `source` command
+./slack-shell config init ~/work-slack.yaml
+./slack-shell config init ~/personal-slack.yaml
+
+# Then switch workspaces in the app
+slack> source ~/work-slack.yaml
 ```
 
 ### -c Option

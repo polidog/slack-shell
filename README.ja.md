@@ -341,6 +341,27 @@ export SLACK_TOKEN="xoxp-your-token"
 
 # ログアウト（保存された認証情報を削除）
 ./slack-shell logout
+
+# サンプル設定ファイルを生成
+./slack-shell config init                    # ~/.slack-shell/config.yaml に作成
+./slack-shell config init ~/work.yaml        # 指定パスに作成
+./slack-shell config init ~/work.yaml -f     # 既存ファイルを上書き
+```
+
+### config init
+
+すべての設定オプションがコメント付きで記載されたサンプル設定ファイルを生成します。
+
+```bash
+# デフォルトの設定ファイルを作成
+./slack-shell config init
+
+# source コマンドで使用するワークスペース別の設定ファイルを作成
+./slack-shell config init ~/work-slack.yaml
+./slack-shell config init ~/personal-slack.yaml
+
+# アプリ内でワークスペースを切り替え
+slack> source ~/work-slack.yaml
 ```
 
 ### -c オプション
