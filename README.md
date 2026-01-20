@@ -296,8 +296,30 @@ export SLACK_TOKEN="xoxp-your-token"
 # 通常起動
 ./slack-shell
 
+# ワンライナー実行（-c オプション）
+./slack-shell -c "ls"
+./slack-shell -c "cd #general && cat -n 5"
+./slack-shell -c "cd @john && send おはよう"
+./slack-shell -c "ls | grep dev"
+
 # ログアウト（保存された認証情報を削除）
 ./slack-shell logout
+```
+
+### -c オプション
+
+`-c` オプションを使うと、対話モードを起動せずにコマンドを実行して終了できます。
+シェルスクリプトやcronとの連携に便利です。
+
+```bash
+# 複数コマンドを && または ; で連結
+./slack-shell -c "cd #times-polidog && send 朝のあいさつ"
+
+# パイプも使用可能
+./slack-shell -c "cd #general && cat | grep 会議"
+
+# 例: cronで定時メッセージ
+0 9 * * 1-5 /path/to/slack-shell -c "cd #general && send おはようございます"
 ```
 
 ## リアルタイム更新（Socket Mode）

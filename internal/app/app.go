@@ -151,3 +151,102 @@ func Logout() error {
 	fmt.Println("ログアウトしました。")
 	return nil
 }
+
+// RunCommand executes a command string and exits (non-interactive mode)
+func (a *App) RunCommand(commandStr string) error {
+	executor := shell.NewExecutor(a.slackClient)
+
+	// Split by && or ; for multiple commands
+	commands := splitCommands(commandStr)
+
+	for _, cmdStr := range commands {
+		cmdStr = trimSpace(cmdStr)
+		if cmdStr == "" {
+			continue
+		}
+
+		// Parse the command
+		pipeline := shell.ParsePipeline(cmdStr)
+		if len(pipeline.Commands) == 0 {
+			continue
+		}
+
+		// Execute the pipeline
+		result := executor.ExecutePipeline(pipeline)
+
+		if result.Error != nil {
+			return result.Error
+		}
+
+		if result.Output != "" {
+			fmt.Println(result.Output)
+		}
+
+		if result.Exit {
+			break
+		}
+	}
+
+	return nil
+}
+
+// splitCommands splits a command string by && or ;
+func splitCommands(s string) []string {
+	var result []string
+	var current string
+	inQuote := false
+	quoteChar := rune(0)
+
+	for i, r := range s {
+		if (r == '"' || r == '\'') && (i == 0 || s[i-1] != '\\') {
+			if !inQuote {
+				inQuote = true
+				quoteChar = r
+			} else if r == quoteChar {
+				inQuote = false
+			}
+			current += string(r)
+			continue
+		}
+
+		if !inQuote {
+			// Check for &&
+			if r == '&' && i+1 < len(s) && s[i+1] == '&' {
+				result = append(result, current)
+				current = ""
+				continue
+			}
+			// Skip the second &
+			if r == '&' && i > 0 && s[i-1] == '&' {
+				continue
+			}
+			// Check for ;
+			if r == ';' {
+				result = append(result, current)
+				current = ""
+				continue
+			}
+		}
+
+		current += string(r)
+	}
+
+	if current != "" {
+		result = append(result, current)
+	}
+
+	return result
+}
+
+// trimSpace removes leading and trailing whitespace
+func trimSpace(s string) string {
+	start := 0
+	end := len(s)
+	for start < end && (s[start] == ' ' || s[start] == '\t') {
+		start++
+	}
+	for end > start && (s[end-1] == ' ' || s[end-1] == '\t') {
+		end--
+	}
+	return s[start:end]
+}
