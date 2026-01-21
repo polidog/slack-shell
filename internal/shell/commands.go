@@ -724,3 +724,48 @@ func (e *Executor) GetCompletions(prefix string) []string {
 
 	return candidates
 }
+
+// availableCommands is the list of all shell commands for tab completion
+var availableCommands = []string{
+	"browse",
+	"cat",
+	"cd",
+	"exit",
+	"grep",
+	"help",
+	"ls",
+	"mkdir",
+	"pwd",
+	"quit",
+	"send",
+	"source",
+	"tail",
+}
+
+// GetCommandCompletions returns completion candidates for command names
+func (e *Executor) GetCommandCompletions(prefix string) []string {
+	prefix = strings.ToLower(prefix)
+	var candidates []string
+	for _, cmd := range availableCommands {
+		if strings.HasPrefix(cmd, prefix) {
+			candidates = append(candidates, cmd)
+		}
+	}
+	return candidates
+}
+
+// GetArgumentCompletions returns completion candidates based on command context
+func (e *Executor) GetArgumentCompletions(cmd string, argPrefix string) []string {
+	switch cmd {
+	case "cd":
+		return e.GetCompletions(argPrefix)
+	case "cat", "tail", "browse", "mkdir":
+		// These commands also work with channels
+		return e.GetCompletions(argPrefix)
+	case "source":
+		// File completion would require filesystem access, skip for now
+		return nil
+	default:
+		return nil
+	}
+}

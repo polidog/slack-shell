@@ -402,18 +402,26 @@ func (m *Model) navigateHistory(direction int) (tea.Model, tea.Cmd) {
 func (m *Model) handleTabCompletion() (tea.Model, tea.Cmd) {
 	input := m.input.Value()
 
-	// Only complete "cd " commands
-	if !strings.HasPrefix(input, "cd ") {
-		return m, nil
-	}
-
-	// Get the part after "cd "
-	prefix := strings.TrimPrefix(input, "cd ")
+	// Parse input to determine completion type
+	parts := strings.SplitN(input, " ", 2)
+	cmdPart := parts[0]
 
 	if !m.completionActive {
 		// First Tab press - initialize completion
 		m.originalInput = input
-		m.completionCandidates = m.executor.GetCompletions(prefix)
+
+		if len(parts) == 1 && !strings.HasSuffix(input, " ") {
+			// Complete command name
+			m.completionCandidates = m.executor.GetCommandCompletions(cmdPart)
+		} else if len(parts) >= 1 {
+			// Complete argument
+			argPrefix := ""
+			if len(parts) == 2 {
+				argPrefix = parts[1]
+			}
+			m.completionCandidates = m.executor.GetArgumentCompletions(cmdPart, argPrefix)
+		}
+
 		m.completionIndex = 0
 		m.completionActive = true
 
@@ -428,7 +436,18 @@ func (m *Model) handleTabCompletion() (tea.Model, tea.Cmd) {
 
 	// Apply current completion
 	if len(m.completionCandidates) > 0 {
-		completed := "cd " + m.completionCandidates[m.completionIndex]
+		candidate := m.completionCandidates[m.completionIndex]
+
+		var completed string
+		originalParts := strings.SplitN(m.originalInput, " ", 2)
+		if len(originalParts) == 1 && !strings.HasSuffix(m.originalInput, " ") {
+			// Command completion
+			completed = candidate
+		} else {
+			// Argument completion
+			completed = originalParts[0] + " " + candidate
+		}
+
 		m.input.SetValue(completed)
 		m.input.CursorEnd()
 	}
