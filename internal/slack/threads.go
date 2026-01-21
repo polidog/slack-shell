@@ -30,7 +30,7 @@ func (c *Client) GetThreadReplies(channelID, threadTS string) ([]Message, error)
 			Text:       msg.Text,
 			ThreadTS:   msg.ThreadTimestamp,
 			ReplyCount: msg.ReplyCount,
-			IsBot:      msg.BotID != "",
+			IsBot:      msg.BotID != "" && msg.User == "",
 			BotID:      msg.BotID,
 			BotName:    botName,
 		}

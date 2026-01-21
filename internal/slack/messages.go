@@ -77,7 +77,7 @@ func (c *Client) GetMessagesWithPagination(channelID string, limit int, latest s
 			Text:       msg.Text,
 			ThreadTS:   msg.ThreadTimestamp,
 			ReplyCount: msg.ReplyCount,
-			IsBot:      msg.BotID != "",
+			IsBot:      msg.BotID != "" && msg.User == "",
 			BotID:      msg.BotID,
 			BotName:    botName,
 		}
