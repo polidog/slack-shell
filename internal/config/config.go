@@ -37,6 +37,17 @@ type Config struct {
 
 	// Startup customization
 	Startup *StartupConfig `yaml:"startup"`
+
+	// Display customization
+	Display *DisplayConfig `yaml:"display"`
+}
+
+// DisplayConfig defines display customization settings
+type DisplayConfig struct {
+	// NameFormat specifies how user names are displayed
+	// Options: "display_name", "real_name", "username"
+	// Default: "display_name"
+	NameFormat string `yaml:"name_format"`
 }
 
 // PromptConfig defines prompt customization settings
@@ -215,6 +226,10 @@ func Load() (*Config, error) {
 				if fileCfg.Startup != nil {
 					cfg.Startup = fileCfg.Startup
 				}
+				// Merge display config
+				if fileCfg.Display != nil {
+					cfg.Display = fileCfg.Display
+				}
 			}
 		}
 	}
@@ -287,6 +302,21 @@ func DefaultStartupConfig() *StartupConfig {
 		Message:      "Welcome to Slack Shell - {workspace}",
 		Banner:       "",
 		InitCommands: nil,
+	}
+}
+
+// GetDisplayConfig returns display config with defaults
+func (c *Config) GetDisplayConfig() *DisplayConfig {
+	if c.Display != nil && c.Display.NameFormat != "" {
+		return c.Display
+	}
+	return DefaultDisplayConfig()
+}
+
+// DefaultDisplayConfig returns the default display configuration
+func DefaultDisplayConfig() *DisplayConfig {
+	return &DisplayConfig{
+		NameFormat: "display_name",
 	}
 }
 
@@ -416,6 +446,17 @@ startup:
   # init_commands:
   #   - "cd #general"
   #   - "cat -n 10"
+
+# ============================================================
+# Display Customization
+# ============================================================
+display:
+  # How user names are displayed
+  # Options:
+  #   "display_name" - Display name (falls back to real name, then username)
+  #   "real_name"    - Real name (falls back to display name, then username)
+  #   "username"     - Username only
+  name_format: "display_name"
 
 # ============================================================
 # Keybindings (Vim-like defaults)

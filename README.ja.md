@@ -447,7 +447,26 @@ redirect_port: 8080
 # プロンプトのカスタマイズ（オプション）
 prompt:
   format: "{workspace} {location}> "
+
+# 表示のカスタマイズ（オプション）
+display:
+  name_format: "display_name"  # display_name, real_name, username
 ```
+
+## 表示のカスタマイズ
+
+メッセージ内のユーザー名の表示方法を設定できます：
+
+```yaml
+display:
+  # オプション:
+  #   "display_name" - 表示名（フォールバック: 氏名 → ユーザー名）
+  #   "real_name"    - 氏名（フォールバック: 表示名 → ユーザー名）
+  #   "username"     - ユーザー名のみ
+  name_format: "display_name"
+```
+
+これはSlackデスクトップアプリの「表示名」設定と同様の動作です。
 
 ## プロンプトのカスタマイズ
 

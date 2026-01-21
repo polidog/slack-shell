@@ -58,8 +58,8 @@ type Model struct {
 }
 
 // NewModel creates a new shell model
-func NewModel(client *slack.Client, notifyMgr *notification.Manager, promptConfig *config.PromptConfig, startupConfig *config.StartupConfig, hasAppToken bool) *Model {
-	executor := NewExecutor(client, promptConfig, hasAppToken)
+func NewModel(client *slack.Client, notifyMgr *notification.Manager, promptConfig *config.PromptConfig, displayConfig *config.DisplayConfig, startupConfig *config.StartupConfig, hasAppToken bool) *Model {
+	executor := NewExecutorWithCache(client, promptConfig, displayConfig, hasAppToken, nil)
 
 	ti := textinput.New()
 	ti.Prompt = promptStyle.Render(executor.GetPrompt())
@@ -413,7 +413,7 @@ func (m *Model) startLiveMode(cmd Command) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	m.liveModel = NewLiveModel(m.client, currentChannel.ID, channelName, m.executor.userNames)
+	m.liveModel = NewLiveModel(m.client, currentChannel.ID, channelName, m.executor.userNames, m.executor.displayConfig)
 	m.liveModel.width = m.width
 	m.liveModel.height = m.height
 	m.liveMode = true

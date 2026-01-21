@@ -24,16 +24,17 @@ type Executor struct {
 	currentChannel *slack.Channel
 	workspaceName  string
 	promptConfig   *config.PromptConfig
+	displayConfig  *config.DisplayConfig
 	hasAppToken    bool
 }
 
 // NewExecutor creates a new command executor
 func NewExecutor(client *slack.Client, promptConfig *config.PromptConfig, hasAppToken bool) *Executor {
-	return NewExecutorWithCache(client, promptConfig, hasAppToken, nil)
+	return NewExecutorWithCache(client, promptConfig, nil, hasAppToken, nil)
 }
 
 // NewExecutorWithCache creates a new command executor with a user cache
-func NewExecutorWithCache(client *slack.Client, promptConfig *config.PromptConfig, hasAppToken bool, userCache *cache.UserCache) *Executor {
+func NewExecutorWithCache(client *slack.Client, promptConfig *config.PromptConfig, displayConfig *config.DisplayConfig, hasAppToken bool, userCache *cache.UserCache) *Executor {
 	workspaceName := "slack"
 	if info, err := client.GetTeamInfo(); err == nil && info != nil {
 		workspaceName = info.Name
@@ -43,10 +44,19 @@ func NewExecutorWithCache(client *slack.Client, promptConfig *config.PromptConfi
 		promptConfig = config.DefaultPromptConfig()
 	}
 
+	if displayConfig == nil {
+		displayConfig = config.DefaultDisplayConfig()
+	}
+
 	// Initialize in-memory map from cache if available
 	userNames := make(map[string]string)
 	if userCache != nil {
-		userNames = userCache.ToMap()
+		// Use preferred name format for in-memory map
+		for userID := range userCache.ToMap() {
+			if entry, ok := userCache.GetFull(userID); ok {
+				userNames[userID] = entry.GetPreferredName(displayConfig.NameFormat)
+			}
+		}
 	}
 
 	return &Executor{
@@ -55,6 +65,7 @@ func NewExecutorWithCache(client *slack.Client, promptConfig *config.PromptConfi
 		userCache:     userCache,
 		workspaceName: workspaceName,
 		promptConfig:  promptConfig,
+		displayConfig: displayConfig,
 		hasAppToken:   hasAppToken,
 	}
 }
@@ -151,7 +162,7 @@ func (e *Executor) executeLs(cmd Command) ExecuteResult {
 			users, err := e.client.GetUsersInfo(userIDs)
 			if err == nil && users != nil {
 				for _, u := range *users {
-					e.setUserName(u.ID, u.Name)
+					e.setUserFull(u.ID, u.Name, u.Profile.DisplayName, u.RealName)
 				}
 			}
 		}
@@ -237,7 +248,7 @@ func (e *Executor) enterDM(userName string) ExecuteResult {
 			users, err := e.client.GetUsersInfo(userIDs)
 			if err == nil && users != nil {
 				for _, u := range *users {
-					e.setUserName(u.ID, u.Name)
+					e.setUserFull(u.ID, u.Name, u.Profile.DisplayName, u.RealName)
 				}
 			}
 		}
@@ -305,7 +316,7 @@ func (e *Executor) executeCat(cmd Command) ExecuteResult {
 		users, err := e.client.GetUsersInfo(ids)
 		if err == nil && users != nil {
 			for _, u := range *users {
-				e.setUserName(u.ID, u.Name)
+				e.setUserFull(u.ID, u.Name, u.Profile.DisplayName, u.RealName)
 			}
 		}
 	}
@@ -761,9 +772,20 @@ func (e *Executor) SetUserCache(userCache *cache.UserCache) {
 
 // setUserName stores a user name in both in-memory map and persistent cache
 func (e *Executor) setUserName(userID, name string) {
-	e.userNames[userID] = name
+	e.setUserFull(userID, name, "", "")
+}
+
+// setUserFull stores full user info in both in-memory map and persistent cache
+func (e *Executor) setUserFull(userID, name, displayName, realName string) {
+	// Store preferred name in in-memory map
+	entry := cache.CachedUser{
+		Name:        name,
+		DisplayName: displayName,
+		RealName:    realName,
+	}
+	e.userNames[userID] = entry.GetPreferredName(e.displayConfig.NameFormat)
 	if e.userCache != nil {
-		e.userCache.Set(userID, name)
+		e.userCache.SetFull(userID, name, displayName, realName)
 	}
 }
 
@@ -795,8 +817,8 @@ func (e *Executor) HandleIncomingMessage(msg slack.IncomingMessage) string {
 		// Try to fetch user info
 		user, err := e.client.GetUserInfo(msg.UserID)
 		if err == nil && user != nil {
-			e.setUserName(msg.UserID, user.Name)
-			userName = user.Name
+			e.setUserFull(msg.UserID, user.Name, user.Profile.DisplayName, user.RealName)
+			userName = e.userNames[msg.UserID]
 		}
 	}
 
@@ -932,8 +954,8 @@ func (e *Executor) GetUserName(userID string) string {
 	// Try to fetch user info
 	user, err := e.client.GetUserInfo(userID)
 	if err == nil && user != nil {
-		e.setUserName(userID, user.Name)
-		return user.Name
+		e.setUserFull(userID, user.Name, user.Profile.DisplayName, user.RealName)
+		return e.userNames[userID]
 	}
 
 	return userID
@@ -1001,7 +1023,7 @@ func (e *Executor) GetCompletions(prefix string) []string {
 		if len(userIDs) > 0 {
 			if users, err := e.client.GetUsersInfo(userIDs); err == nil && users != nil {
 				for _, u := range *users {
-					e.setUserName(u.ID, u.Name)
+					e.setUserFull(u.ID, u.Name, u.Profile.DisplayName, u.RealName)
 				}
 			}
 		}

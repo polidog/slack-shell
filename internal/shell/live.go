@@ -8,6 +8,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/polidog/slack-shell/internal/cache"
+	"github.com/polidog/slack-shell/internal/config"
 	"github.com/polidog/slack-shell/internal/slack"
 )
 
@@ -46,6 +48,7 @@ type LiveModel struct {
 	scrollOffset  int
 	width, height int
 	userCache     map[string]string
+	displayConfig *config.DisplayConfig
 
 	// Thread display
 	threadMessages []slack.Message
@@ -69,19 +72,24 @@ type LiveModel struct {
 }
 
 // NewLiveModel creates a new LiveModel
-func NewLiveModel(client *slack.Client, channelID, channelName string, userCache map[string]string) *LiveModel {
+func NewLiveModel(client *slack.Client, channelID, channelName string, userCache map[string]string, displayConfig *config.DisplayConfig) *LiveModel {
 	ti := textinput.New()
 	ti.Placeholder = "Type a message..."
 	ti.CharLimit = 1000
 	ti.Width = 60
 
+	if displayConfig == nil {
+		displayConfig = config.DefaultDisplayConfig()
+	}
+
 	return &LiveModel{
-		client:      client,
-		channelID:   channelID,
-		channelName: channelName,
-		userCache:   userCache,
-		inputText:   ti,
-		loading:     true,
+		client:        client,
+		channelID:     channelID,
+		channelName:   channelName,
+		userCache:     userCache,
+		displayConfig: displayConfig,
+		inputText:     ti,
+		loading:       true,
 	}
 }
 
@@ -156,7 +164,12 @@ func (m *LiveModel) resolveUserNames(messages []slack.Message) {
 			if _, ok := m.userCache[msg.User]; !ok {
 				user, err := m.client.GetUserInfo(msg.User)
 				if err == nil {
-					m.userCache[msg.User] = user.Name
+					entry := cache.CachedUser{
+						Name:        user.Name,
+						DisplayName: user.Profile.DisplayName,
+						RealName:    user.RealName,
+					}
+					m.userCache[msg.User] = entry.GetPreferredName(m.displayConfig.NameFormat)
 				}
 			}
 		}

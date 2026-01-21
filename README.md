@@ -404,7 +404,26 @@ redirect_port: 8080
 # Prompt customization (optional)
 prompt:
   format: "{workspace} {location}> "
+
+# Display customization (optional)
+display:
+  name_format: "display_name"  # display_name, real_name, or username
 ```
+
+## Display Customization
+
+Configure how user names are displayed in messages:
+
+```yaml
+display:
+  # Options:
+  #   "display_name" - Display name (falls back to real name, then username)
+  #   "real_name"    - Real name (falls back to display name, then username)
+  #   "username"     - Username only
+  name_format: "display_name"
+```
+
+This mirrors the Slack desktop app's "Display Name" setting.
 
 ## Prompt Customization
 

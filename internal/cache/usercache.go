@@ -12,8 +12,10 @@ import (
 
 // CachedUser represents a cached user entry
 type CachedUser struct {
-	Name     string    `json:"name"`
-	CachedAt time.Time `json:"cached_at"`
+	Name        string    `json:"name"`
+	DisplayName string    `json:"display_name,omitempty"`
+	RealName    string    `json:"real_name,omitempty"`
+	CachedAt    time.Time `json:"cached_at"`
 }
 
 // UserCacheFile represents the JSON file structure
@@ -102,14 +104,70 @@ func (c *UserCache) IsExpired(userID string) bool {
 
 // Set stores a user name in the cache
 func (c *UserCache) Set(userID, name string) {
+	c.SetFull(userID, name, "", "")
+}
+
+// SetFull stores a user with all name fields in the cache
+func (c *UserCache) SetFull(userID, name, displayName, realName string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.data[userID] = CachedUser{
-		Name:     name,
-		CachedAt: time.Now(),
+		Name:        name,
+		DisplayName: displayName,
+		RealName:    realName,
+		CachedAt:    time.Now(),
 	}
 	c.dirty = true
+}
+
+// GetFull retrieves full user info from the cache
+func (c *UserCache) GetFull(userID string) (CachedUser, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	entry, ok := c.data[userID]
+	return entry, ok
+}
+
+// GetDisplayName returns the appropriate name based on format preference
+// format can be: "display_name", "real_name", "username"
+func (c *UserCache) GetDisplayName(userID, format string) (string, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	entry, ok := c.data[userID]
+	if !ok {
+		return "", false
+	}
+
+	return entry.GetPreferredName(format), true
+}
+
+// GetPreferredName returns the preferred name based on format
+func (u CachedUser) GetPreferredName(format string) string {
+	switch format {
+	case "display_name":
+		// Display name -> Real name -> Username
+		if u.DisplayName != "" {
+			return u.DisplayName
+		}
+		if u.RealName != "" {
+			return u.RealName
+		}
+		return u.Name
+	case "real_name":
+		// Real name -> Display name -> Username
+		if u.RealName != "" {
+			return u.RealName
+		}
+		if u.DisplayName != "" {
+			return u.DisplayName
+		}
+		return u.Name
+	default: // "username" or empty
+		return u.Name
+	}
 }
 
 // SetBatch stores multiple user names in the cache
