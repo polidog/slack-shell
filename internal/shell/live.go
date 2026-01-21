@@ -483,7 +483,7 @@ func (m *LiveModel) renderHelp() string {
 	} else if m.threadVisible {
 		help = "r: reply | q/Esc: back | j/k: scroll"
 	} else {
-		help = "i: new message | Enter: view thread | r: reply | j/k/arrows: navigate | q: exit"
+		help = "i: new message | Enter: view thread | r: reply | R: reload | j/k/arrows: navigate | q: exit"
 	}
 	return "\n" + liveHelpStyle.Render(help)
 }
