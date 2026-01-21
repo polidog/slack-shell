@@ -80,7 +80,9 @@ func FormatMessages(messages []slack.Message, userNames map[string]string) strin
 		// Get user name
 		userName := msg.UserName
 		if userName == "" {
-			if name, ok := userNames[msg.User]; ok {
+			if msg.IsBot && msg.BotName != "" {
+				userName = msg.BotName
+			} else if name, ok := userNames[msg.User]; ok {
 				userName = name
 			} else {
 				userName = msg.User
@@ -156,6 +158,12 @@ Admin commands:
 Pipe support:
   ls | grep <pattern>     Search channels/DMs by name
   cat | grep <pattern>    Search messages by content
+
+Keyboard shortcuts:
+  Ctrl+L                  Refresh screen
+  Ctrl+C                  Exit application
+  Tab                     Auto-complete
+  Up/Down                 Navigate command history
 `
 }
 

@@ -183,6 +183,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyCtrlC:
 			return m, tea.Quit
 
+		case tea.KeyCtrlL:
+			return m, tea.ClearScreen
+
 		case tea.KeyEnter:
 			m.resetCompletion()
 			return m.executeCommand()
