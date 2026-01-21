@@ -1,5 +1,6 @@
 # Binary (root only)
 /slack-tui
+/slack-shell
 
 # IDE
 .idea/
