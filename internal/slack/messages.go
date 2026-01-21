@@ -17,6 +17,7 @@ type Message struct {
 	Attachments []Attachment
 	IsBot       bool
 	BotID       string
+	BotName     string
 }
 
 type Reaction struct {
@@ -44,6 +45,12 @@ func (c *Client) GetMessages(channelID string, limit int) ([]Message, error) {
 
 	var messages []Message
 	for _, msg := range history.Messages {
+		// Get bot name from BotProfile or Username field
+		botName := msg.Username
+		if msg.BotProfile != nil && msg.BotProfile.Name != "" {
+			botName = msg.BotProfile.Name
+		}
+
 		m := Message{
 			Timestamp:  msg.Timestamp,
 			User:       msg.User,
@@ -52,6 +59,7 @@ func (c *Client) GetMessages(channelID string, limit int) ([]Message, error) {
 			ReplyCount: msg.ReplyCount,
 			IsBot:      msg.BotID != "",
 			BotID:      msg.BotID,
+			BotName:    botName,
 		}
 
 		for _, r := range msg.Reactions {

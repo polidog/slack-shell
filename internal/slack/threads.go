@@ -18,6 +18,12 @@ func (c *Client) GetThreadReplies(channelID, threadTS string) ([]Message, error)
 
 	var messages []Message
 	for _, msg := range msgs {
+		// Get bot name from BotProfile or Username field
+		botName := msg.Username
+		if msg.BotProfile != nil && msg.BotProfile.Name != "" {
+			botName = msg.BotProfile.Name
+		}
+
 		m := Message{
 			Timestamp:  msg.Timestamp,
 			User:       msg.User,
@@ -26,6 +32,7 @@ func (c *Client) GetThreadReplies(channelID, threadTS string) ([]Message, error)
 			ReplyCount: msg.ReplyCount,
 			IsBot:      msg.BotID != "",
 			BotID:      msg.BotID,
+			BotName:    botName,
 		}
 
 		for _, r := range msg.Reactions {

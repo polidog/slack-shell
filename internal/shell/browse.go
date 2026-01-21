@@ -375,7 +375,9 @@ func (m *BrowseModel) formatMessageLine(msg slack.Message, index int) string {
 	// Get user name
 	userName := msg.UserName
 	if userName == "" {
-		if name, ok := m.userCache[msg.User]; ok {
+		if msg.IsBot && msg.BotName != "" {
+			userName = msg.BotName
+		} else if name, ok := m.userCache[msg.User]; ok {
 			userName = name
 		} else {
 			userName = msg.User
