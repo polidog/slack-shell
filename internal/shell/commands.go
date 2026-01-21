@@ -627,6 +627,8 @@ func getCommandName(t CommandType) string {
 		return "mkdir"
 	case CmdVersion:
 		return "version"
+	case CmdLive:
+		return "live"
 	default:
 		return "unknown"
 	}
@@ -780,6 +782,7 @@ var availableCommands = []string{
 	"exit",
 	"grep",
 	"help",
+	"live",
 	"ls",
 	"mkdir",
 	"pwd",
@@ -807,7 +810,7 @@ func (e *Executor) GetArgumentCompletions(cmd string, argPrefix string) []string
 	switch cmd {
 	case "cd":
 		return e.GetCompletions(argPrefix)
-	case "cat", "tail", "browse", "mkdir":
+	case "cat", "tail", "browse", "mkdir", "live":
 		// These commands also work with channels
 		return e.GetCompletions(argPrefix)
 	case "source":

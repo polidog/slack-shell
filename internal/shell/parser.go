@@ -24,6 +24,7 @@ const (
 	CmdBrowse
 	CmdMkdir
 	CmdVersion
+	CmdLive
 )
 
 // Pipeline represents a series of commands connected by pipes
@@ -121,6 +122,8 @@ func parseCommandType(s string) CommandType {
 		return CmdMkdir
 	case "version":
 		return CmdVersion
+	case "live":
+		return CmdLive
 	default:
 		return CmdUnknown
 	}

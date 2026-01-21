@@ -138,6 +138,8 @@ func FormatHelp() string {
   tail -n 10      Show last 10 messages, then stream
   browse          Interactive message browser
                   (j/k: navigate, Enter: view thread, r: reply, q: exit)
+  live            Live mode with real-time updates and message sending
+                  (i: new message, Enter: view thread, r: reply, j/k: navigate, q: exit)
   send <message>  Send a message
   pwd             Show current channel
   source <file>   Switch workspace using config file

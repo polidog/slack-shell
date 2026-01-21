@@ -43,6 +43,10 @@ type Model struct {
 	browseMode  bool
 	browseModel *BrowseModel
 
+	// Live mode
+	liveMode  bool
+	liveModel *LiveModel
+
 	// Tab completion
 	completionCandidates []string
 	completionIndex      int
@@ -127,6 +131,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Handle live mode key events
+		if m.liveMode {
+			// Check for exit condition first
+			if m.liveModel.ShouldExit(msg) {
+				m.liveMode = false
+				m.liveModel = nil
+				m.history = append(m.history, tailStyle.Render("Exited live mode."))
+				m.input.Focus()
+				return m, nil
+			}
+			m.liveModel, cmd = m.liveModel.Update(msg)
+			return m, cmd
+		}
+
 		// Handle browse mode key events
 		if m.browseMode {
 			// Check for exit condition first
@@ -192,9 +210,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.input.Width = msg.Width - 10
 		m.ready = true
+		// Update live model dimensions if active
+		if m.liveMode && m.liveModel != nil {
+			m.liveModel, cmd = m.liveModel.Update(msg)
+			return m, cmd
+		}
 		// Update browse model dimensions if active
 		if m.browseMode && m.browseModel != nil {
 			m.browseModel, cmd = m.browseModel.Update(msg)
+			return m, cmd
+		}
+
+	// Handle live mode messages
+	case LiveMessagesLoadedMsg, LiveThreadLoadedMsg, LiveMessageSentMsg, LiveReplySentMsg:
+		if m.liveMode && m.liveModel != nil {
+			m.liveModel, cmd = m.liveModel.Update(msg)
 			return m, cmd
 		}
 
@@ -207,11 +237,35 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case IncomingMessageMsg:
 		slackMsg := slack.IncomingMessage(msg)
+
+		// Handle live mode - add message to live view
+		if m.liveMode && m.liveModel != nil {
+			m.liveModel.AddIncomingMessage(
+				slackMsg.ChannelID,
+				slackMsg.UserID,
+				slackMsg.Text,
+				slackMsg.Timestamp,
+				slackMsg.ThreadTS,
+			)
+		}
+
+		// Handle browse mode - add message to browse view
+		if m.browseMode && m.browseModel != nil {
+			m.browseModel.AddIncomingMessage(
+				slackMsg.ChannelID,
+				slackMsg.UserID,
+				slackMsg.Text,
+				slackMsg.Timestamp,
+				slackMsg.ThreadTS,
+			)
+		}
+
 		output := m.executor.HandleIncomingMessage(slackMsg)
 		if output != "" {
 			if m.tailMode {
 				m.history = append(m.history, newMsgStyle.Render(output))
-			} else {
+			} else if !m.browseMode && !m.liveMode {
+				// Don't add to history when in browse/live mode (already shown in their views)
 				m.history = append(m.history, output)
 			}
 		}
@@ -238,12 +292,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				IsIM:        m.executor.IsIMChannel(slackMsg.ChannelID),
 			}
 
-			m.notificationManager.HandleMessage(notifyMsg, currentChannelID, m.tailMode)
+			m.notificationManager.HandleMessage(notifyMsg, currentChannelID, m.tailMode || m.browseMode || m.liveMode)
 		}
 		return m, nil
 	}
 
-	if !m.tailMode && !m.browseMode {
+	if !m.tailMode && !m.browseMode && !m.liveMode {
 		m.input, cmd = m.input.Update(msg)
 	}
 	return m, cmd
@@ -279,6 +333,11 @@ func (m *Model) executeCommand() (tea.Model, tea.Cmd) {
 			// Handle browse command specially
 			if parsedCmd.Type == CmdBrowse {
 				return m.startBrowseMode(parsedCmd)
+			}
+
+			// Handle live command specially
+			if parsedCmd.Type == CmdLive {
+				return m.startLiveMode(parsedCmd)
 			}
 
 			result = m.executor.Execute(parsedCmd)
@@ -376,6 +435,39 @@ func (m *Model) startBrowseMode(cmd Command) (tea.Model, tea.Cmd) {
 	return m, m.browseModel.Init()
 }
 
+func (m *Model) startLiveMode(cmd Command) (tea.Model, tea.Cmd) {
+	currentChannel := m.executor.GetCurrentChannel()
+	if currentChannel == nil {
+		m.history = append(m.history, errorStyle.Render("Not in a channel. Use 'cd #channel' first."))
+		m.input.SetValue("")
+		return m, nil
+	}
+
+	if m.realtimeClient == nil {
+		m.history = append(m.history, errorStyle.Render("Real-time connection not available. Set SLACK_APP_TOKEN to enable."))
+		m.input.SetValue("")
+		return m, nil
+	}
+
+	channelName := currentChannel.Name
+	if currentChannel.IsIM {
+		if name, ok := m.executor.userNames[currentChannel.UserID]; ok {
+			channelName = name
+		} else {
+			channelName = currentChannel.UserID
+		}
+	}
+
+	m.liveModel = NewLiveModel(m.client, currentChannel.ID, channelName, m.executor.userNames)
+	m.liveModel.width = m.width
+	m.liveModel.height = m.height
+	m.liveMode = true
+	m.input.Blur()
+	m.input.SetValue("")
+
+	return m, m.liveModel.Init()
+}
+
 func (m *Model) navigateHistory(direction int) (tea.Model, tea.Cmd) {
 	if len(m.commandHistory) == 0 {
 		return m, nil
@@ -466,6 +558,11 @@ func (m *Model) resetCompletion() {
 func (m *Model) View() string {
 	if !m.ready {
 		return "Loading..."
+	}
+
+	// Live mode takes over the entire screen
+	if m.liveMode && m.liveModel != nil {
+		return m.liveModel.View()
 	}
 
 	// Browse mode takes over the entire screen
