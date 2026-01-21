@@ -434,6 +434,43 @@ func (m *BrowseModel) renderHelp() string {
 	return "\n" + browseHelpStyle.Render(help)
 }
 
+// AddIncomingMessage adds a new message from realtime events
+func (m *BrowseModel) AddIncomingMessage(channelID, userID, text, timestamp, threadTS string) {
+	// Only add if it's for this channel
+	if channelID != m.channelID {
+		return
+	}
+
+	// Create a new message
+	newMsg := slack.Message{
+		Timestamp: timestamp,
+		User:      userID,
+		Text:      text,
+		ThreadTS:  threadTS,
+	}
+
+	// If this is a thread reply to the currently viewed thread
+	if m.threadVisible && threadTS != "" && threadTS == m.threadTS {
+		m.threadMessages = append(m.threadMessages, newMsg)
+		return
+	}
+
+	// If this is a main channel message (not a thread reply or it's a parent message)
+	if threadTS == "" || threadTS == timestamp {
+		m.messages = append(m.messages, newMsg)
+		// Auto-scroll to the newest message if already at the bottom
+		if m.selectedIndex == len(m.messages)-2 {
+			m.selectedIndex = len(m.messages) - 1
+			m.ensureVisible()
+		}
+	}
+}
+
+// GetChannelID returns the channel ID for this browse model
+func (m *BrowseModel) GetChannelID() string {
+	return m.channelID
+}
+
 // ShouldExit returns true if the user wants to exit browse mode
 func (m *BrowseModel) ShouldExit(msg tea.KeyMsg) bool {
 	// Only exit on 'q' when not in input mode and not in thread view

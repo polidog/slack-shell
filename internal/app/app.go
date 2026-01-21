@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/polidog/slack-shell/internal/config"
@@ -128,6 +129,13 @@ func (a *App) Run() error {
 	model := shell.NewModel(a.slackClient, a.notificationManager, a.config.GetPromptConfig(), a.config.GetStartupConfig())
 
 	// Set up realtime client if app token is available
+	if a.config.Debug {
+		if a.config.AppToken != "" {
+			fmt.Fprintf(os.Stderr, "[DEBUG] App token found, setting up Socket Mode...\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "[DEBUG] No app token found, Socket Mode disabled\n")
+		}
+	}
 	if a.config.AppToken != "" {
 		a.realtimeClient = slack.NewRealtimeClient(
 			a.slackClient,
@@ -140,12 +148,16 @@ func (a *App) Run() error {
 					}
 				}
 			},
+			a.config.Debug,
 		)
 		model.SetRealtimeClient(a.realtimeClient)
 
 		go func() {
+			if a.config.Debug {
+				fmt.Fprintf(os.Stderr, "[DEBUG] Starting Socket Mode connection...\n")
+			}
 			if err := a.realtimeClient.Start(); err != nil {
-				// Handle error silently for now
+				fmt.Fprintf(os.Stderr, "[ERROR] Socket Mode error: %v\n", err)
 			}
 		}()
 	}

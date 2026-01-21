@@ -20,6 +20,9 @@ type Config struct {
 	SlackToken string `yaml:"slack_token"`
 	AppToken   string `yaml:"app_token"`
 
+	// Debug mode
+	Debug bool `yaml:"debug"`
+
 	// OAuth settings
 	RedirectPort int `yaml:"redirect_port"`
 
@@ -140,6 +143,9 @@ func Load() (*Config, error) {
 	if clientSecret := os.Getenv("SLACK_CLIENT_SECRET"); clientSecret != "" {
 		cfg.ClientSecret = clientSecret
 	}
+	if debug := os.Getenv("SLACK_DEBUG"); debug == "1" || debug == "true" {
+		cfg.Debug = true
+	}
 
 	// Try config file (new location first, then legacy)
 	if configPath := findConfigFile(); configPath != "" {
@@ -161,6 +167,10 @@ func Load() (*Config, error) {
 				}
 				if fileCfg.RedirectPort != 0 {
 					cfg.RedirectPort = fileCfg.RedirectPort
+				}
+				// Merge debug (env var takes precedence)
+				if !cfg.Debug && fileCfg.Debug {
+					cfg.Debug = fileCfg.Debug
 				}
 				// Merge keybindings
 				if fileCfg.Keybindings != nil {
