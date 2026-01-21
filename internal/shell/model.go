@@ -267,13 +267,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			)
 		}
 
-		output := m.executor.HandleIncomingMessage(slackMsg)
-		if output != "" {
-			if m.tailMode {
+		// Only show incoming messages in tail mode (live mode handles it in its own view)
+		if m.tailMode {
+			output := m.executor.HandleIncomingMessage(slackMsg)
+			if output != "" {
 				m.history = append(m.history, newMsgStyle.Render(output))
-			} else if !m.browseMode && !m.liveMode {
-				// Don't add to history when in browse/live mode (already shown in their views)
-				m.history = append(m.history, output)
 			}
 		}
 
