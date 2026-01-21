@@ -237,12 +237,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case IncomingMessageMsg:
 		slackMsg := slack.IncomingMessage(msg)
+		userName := m.executor.GetUserName(slackMsg.UserID)
 
 		// Handle live mode - add message to live view
 		if m.liveMode && m.liveModel != nil {
 			m.liveModel.AddIncomingMessage(
 				slackMsg.ChannelID,
 				slackMsg.UserID,
+				userName,
 				slackMsg.Text,
 				slackMsg.Timestamp,
 				slackMsg.ThreadTS,
@@ -254,6 +256,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.browseModel.AddIncomingMessage(
 				slackMsg.ChannelID,
 				slackMsg.UserID,
+				userName,
 				slackMsg.Text,
 				slackMsg.Timestamp,
 				slackMsg.ThreadTS,

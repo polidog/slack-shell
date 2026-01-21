@@ -25,6 +25,7 @@ const (
 	CmdMkdir
 	CmdVersion
 	CmdLive
+	CmdSudo
 )
 
 // Pipeline represents a series of commands connected by pipes
@@ -124,6 +125,8 @@ func parseCommandType(s string) CommandType {
 		return CmdVersion
 	case "live":
 		return CmdLive
+	case "sudo":
+		return CmdSudo
 	default:
 		return CmdUnknown
 	}

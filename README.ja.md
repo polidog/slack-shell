@@ -22,6 +22,7 @@ GoとBubble Teaで作られたターミナルベースのSlackクライアント
 - 🔍 **パイプ対応** - `ls | grep` や `cat | grep` で検索
 - 🔔 **通知システム** - ターミナルベル、デスクトップ通知、タイトル更新、ビジュアル通知
 - ⌨️ **Tab補完** - `cd`コマンドでチャンネル名・ユーザー名を補完
+- 🔧 **管理コマンド** - `sudo app install/remove`でチャンネルへの一括参加/退出
 
 ## クイックスタート
 
@@ -53,7 +54,7 @@ go build ./cmd/slack-shell
 | スコープ | 説明 |
 |----------|------|
 | `channels:read` | パブリックチャンネル一覧 |
-| `channels:write` | パブリックチャンネル作成 |
+| `channels:write` | パブリックチャンネル作成、チャンネルへの参加/退出 |
 | `channels:history` | パブリックチャンネルのメッセージ |
 | `groups:read` | プライベートチャンネル一覧 |
 | `groups:write` | プライベートチャンネル作成 |
@@ -126,6 +127,12 @@ slack> exit                  # 終了
 # パイプ対応
 slack> ls | grep dev         # チャンネル名で検索
 slack> cat | grep エラー     # メッセージ内容で検索
+
+# 管理コマンド
+slack> sudo app install              # 全パブリックチャンネルに参加
+slack> sudo app install #ch1 #ch2    # 特定のチャンネルに参加
+slack> sudo app remove               # 全パブリックチャンネルから退出
+slack> sudo app remove #ch1 #ch2     # 特定のチャンネルから退出
 ```
 
 ### 操作例
@@ -251,6 +258,46 @@ slack> cd @ali       # Tab押下 → @alice に補完
 - **`cd @` + Tab**: ユーザー名（DM相手）のみ補完
 - **`cd ` + Tab**: 両方の候補を表示
 - **Tab連打**: 次の候補に切り替え（循環）
+
+## 管理コマンド
+
+`sudo` コマンドを使うと、アプリのチャンネル参加状況を一括管理できます。
+
+### sudo app install
+
+パブリックチャンネルに参加します。Socket Modeでメッセージを受信するために必要です。
+
+```bash
+# 全パブリックチャンネルに参加
+slack> sudo app install
+Installing app to all public channels...
+  ✓ #general
+  ✓ #random
+  ✓ #dev
+Done: 50 joined, 5 skipped, 0 failed
+
+# 特定のチャンネルのみに参加
+slack> sudo app install #dev #engineering #alerts
+Installing app to 3 channel(s)...
+  ✓ #dev
+  ✓ #engineering
+  ✓ #alerts
+Done: 3 joined, 0 skipped, 0 failed
+```
+
+### sudo app remove
+
+パブリックチャンネルから退出します。
+
+```bash
+# 全パブリックチャンネルから退出（#general以外）
+slack> sudo app remove
+
+# 特定のチャンネルから退出
+slack> sudo app remove #random #old-project
+```
+
+> **注意**: これらのコマンドには `channels:write` スコープ（ユーザートークン）または `channels:join` スコープ（ボットトークン）が必要です。
 
 ## 通知システム
 

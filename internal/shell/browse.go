@@ -435,7 +435,7 @@ func (m *BrowseModel) renderHelp() string {
 }
 
 // AddIncomingMessage adds a new message from realtime events
-func (m *BrowseModel) AddIncomingMessage(channelID, userID, text, timestamp, threadTS string) {
+func (m *BrowseModel) AddIncomingMessage(channelID, userID, userName, text, timestamp, threadTS string) {
 	// Only add if it's for this channel
 	if channelID != m.channelID {
 		return
@@ -445,6 +445,7 @@ func (m *BrowseModel) AddIncomingMessage(channelID, userID, text, timestamp, thr
 	newMsg := slack.Message{
 		Timestamp: timestamp,
 		User:      userID,
+		UserName:  userName,
 		Text:      text,
 		ThreadTS:  threadTS,
 	}

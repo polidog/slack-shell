@@ -22,6 +22,7 @@ Navigate Slack with familiar shell commands.
 - **Pipe support** - Search with `ls | grep` and `cat | grep`
 - **Notifications** - Terminal bell, desktop notifications, title updates, visual alerts
 - **Tab completion** - Auto-complete channel and user names with `cd`
+- **Admin commands** - Bulk join/leave channels with `sudo app install/remove`
 
 ## Quick Start
 
@@ -53,7 +54,7 @@ go build ./cmd/slack-shell
 | Scope | Description |
 |-------|-------------|
 | `channels:read` | List public channels |
-| `channels:write` | Create public channels |
+| `channels:write` | Create public channels, join/leave channels |
 | `channels:history` | Read public channel messages |
 | `groups:read` | List private channels |
 | `groups:write` | Create private channels |
@@ -126,6 +127,12 @@ slack> exit                  # Exit
 # Pipe support
 slack> ls | grep dev         # Search channels by name
 slack> cat | grep error      # Search messages by content
+
+# Admin commands
+slack> sudo app install              # Join all public channels
+slack> sudo app install #ch1 #ch2    # Join specific channels
+slack> sudo app remove               # Leave all public channels
+slack> sudo app remove #ch1 #ch2     # Leave specific channels
 ```
 
 ### Example Session
@@ -242,6 +249,46 @@ The `browse` command provides an interactive interface for browsing and replying
 | `r` | Reply to selected message (creates/extends thread) |
 | `Esc` | Close thread view / cancel input |
 | `q` | Exit browse mode |
+
+## Admin Commands
+
+The `sudo` command provides administrative operations for managing the app's channel membership.
+
+### sudo app install
+
+Join public channels to receive messages via Socket Mode.
+
+```bash
+# Join all public channels
+slack> sudo app install
+Installing app to all public channels...
+  ✓ #general
+  ✓ #random
+  ✓ #dev
+Done: 50 joined, 5 skipped, 0 failed
+
+# Join specific channels only
+slack> sudo app install #dev #engineering #alerts
+Installing app to 3 channel(s)...
+  ✓ #dev
+  ✓ #engineering
+  ✓ #alerts
+Done: 3 joined, 0 skipped, 0 failed
+```
+
+### sudo app remove
+
+Leave public channels.
+
+```bash
+# Leave all public channels (except #general)
+slack> sudo app remove
+
+# Leave specific channels
+slack> sudo app remove #random #old-project
+```
+
+> **Note**: These commands require the `channels:write` scope for user tokens or `channels:join` scope for bot tokens.
 
 ## Tab Completion
 

@@ -484,7 +484,7 @@ func (m *LiveModel) renderHelp() string {
 }
 
 // AddIncomingMessage adds a new message from realtime events
-func (m *LiveModel) AddIncomingMessage(channelID, userID, text, timestamp, threadTS string) {
+func (m *LiveModel) AddIncomingMessage(channelID, userID, userName, text, timestamp, threadTS string) {
 	// Only add if it's for this channel
 	if channelID != m.channelID {
 		return
@@ -494,6 +494,7 @@ func (m *LiveModel) AddIncomingMessage(channelID, userID, text, timestamp, threa
 	newMsg := slack.Message{
 		Timestamp: timestamp,
 		User:      userID,
+		UserName:  userName,
 		Text:      text,
 		ThreadTS:  threadTS,
 	}

@@ -146,6 +146,12 @@ func FormatHelp() string {
   help            Show this help
   exit            Exit the application
 
+Admin commands:
+  sudo app install              Join all public channels (for Socket Mode)
+  sudo app install #ch1 #ch2    Join specific channels
+  sudo app remove               Leave all public channels
+  sudo app remove #ch1 #ch2     Leave specific channels
+
 Pipe support:
   ls | grep <pattern>     Search channels/DMs by name
   cat | grep <pattern>    Search messages by content

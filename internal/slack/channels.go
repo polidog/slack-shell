@@ -230,3 +230,48 @@ func (c *Client) CreateChannel(name string, isPrivate bool) (*Channel, error) {
 		IsPrivate: isPrivate,
 	}, nil
 }
+
+// GetAllPublicChannels returns all public channels in the workspace (not just ones the user is a member of)
+func (c *Client) GetAllPublicChannels() ([]Channel, error) {
+	var channels []Channel
+
+	params := &slack.GetConversationsParameters{
+		Types:           []string{"public_channel"},
+		ExcludeArchived: true,
+		Limit:           200,
+	}
+
+	for {
+		convs, cursor, err := c.api.GetConversations(params)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, conv := range convs {
+			channels = append(channels, Channel{
+				ID:        conv.ID,
+				Name:      conv.Name,
+				IsChannel: true,
+				IsPrivate: false,
+			})
+		}
+
+		if cursor == "" {
+			break
+		}
+		params.Cursor = cursor
+	}
+
+	return channels, nil
+}
+
+// JoinChannel joins a channel (bot joins itself)
+func (c *Client) JoinChannel(channelID string) error {
+	_, _, _, err := c.api.JoinConversation(channelID)
+	return err
+}
+
+// LeaveChannel leaves a channel
+func (c *Client) LeaveChannel(channelID string) (bool, error) {
+	return c.api.LeaveConversation(channelID)
+}

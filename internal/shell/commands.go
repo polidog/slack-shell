@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/polidog/slack-shell/internal/config"
 	"github.com/polidog/slack-shell/internal/slack"
@@ -88,6 +89,8 @@ func (e *Executor) Execute(cmd Command) ExecuteResult {
 		return e.executeMkdir(cmd)
 	case CmdVersion:
 		return ExecuteResult{Output: version.String()}
+	case CmdSudo:
+		return e.executeSudo(cmd)
 	default:
 		return ExecuteResult{Output: "Unknown command. Type 'help' for available commands."}
 	}
@@ -500,6 +503,185 @@ func (e *Executor) executeMkdir(cmd Command) ExecuteResult {
 	return ExecuteResult{Output: fmt.Sprintf("Channel %s%s created.", prefix, channel.Name)}
 }
 
+func (e *Executor) executeSudo(cmd Command) ExecuteResult {
+	if len(cmd.Args) < 2 {
+		return ExecuteResult{Output: "Usage: sudo app install [#channel...] | sudo app remove [#channel...]"}
+	}
+
+	subCmd := cmd.Args[0]
+	action := cmd.Args[1]
+
+	if subCmd != "app" {
+		return ExecuteResult{Output: "Usage: sudo app install [#channel...] | sudo app remove [#channel...]"}
+	}
+
+	// Get optional channel arguments (args after "app install" or "app remove")
+	var targetChannels []string
+	if len(cmd.Args) > 2 {
+		for _, arg := range cmd.Args[2:] {
+			// Remove # prefix if present
+			ch := strings.TrimPrefix(arg, "#")
+			if ch != "" {
+				targetChannels = append(targetChannels, ch)
+			}
+		}
+	}
+
+	switch action {
+	case "install":
+		return e.executeSudoAppInstall(targetChannels)
+	case "remove":
+		return e.executeSudoAppRemove(targetChannels)
+	default:
+		return ExecuteResult{Output: "Usage: sudo app install [#channel...] | sudo app remove [#channel...]"}
+	}
+}
+
+func (e *Executor) executeSudoAppInstall(targetChannels []string) ExecuteResult {
+	// Get all public channels
+	allChannels, err := e.client.GetAllPublicChannels()
+	if err != nil {
+		return ExecuteResult{Error: fmt.Errorf("failed to get channels: %w", err)}
+	}
+
+	// Filter channels if specific targets are provided
+	var channels []slack.Channel
+	if len(targetChannels) > 0 {
+		targetSet := make(map[string]bool)
+		for _, t := range targetChannels {
+			targetSet[strings.ToLower(t)] = true
+		}
+		for _, ch := range allChannels {
+			if targetSet[strings.ToLower(ch.Name)] {
+				channels = append(channels, ch)
+			}
+		}
+		if len(channels) == 0 {
+			return ExecuteResult{Output: "No matching channels found."}
+		}
+	} else {
+		channels = allChannels
+	}
+
+	var joined, skipped, failed int
+	var output strings.Builder
+	if len(targetChannels) > 0 {
+		output.WriteString(fmt.Sprintf("Installing app to %d channel(s)...\n", len(channels)))
+	} else {
+		output.WriteString("Installing app to all public channels...\n")
+	}
+
+	for _, ch := range channels {
+		err := e.client.JoinChannel(ch.ID)
+		if err != nil {
+			// Check if it's a permission error
+			errStr := err.Error()
+			if strings.Contains(errStr, "is_archived") {
+				skipped++
+				continue
+			}
+			if strings.Contains(errStr, "already_in_channel") {
+				skipped++
+				continue
+			}
+			if strings.Contains(errStr, "method_not_supported_for_channel_type") {
+				skipped++
+				continue
+			}
+			if strings.Contains(errStr, "cant_invite_self") {
+				// Already in channel
+				skipped++
+				continue
+			}
+			failed++
+			output.WriteString(fmt.Sprintf("  ✗ #%s: %s\n", ch.Name, err.Error()))
+		} else {
+			joined++
+			output.WriteString(fmt.Sprintf("  ✓ #%s\n", ch.Name))
+		}
+		// Rate limit: 1 request per second (Tier 3 API)
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	output.WriteString(fmt.Sprintf("\nDone: %d joined, %d skipped, %d failed", joined, skipped, failed))
+
+	// Invalidate channel cache
+	e.channels = nil
+
+	return ExecuteResult{Output: output.String()}
+}
+
+func (e *Executor) executeSudoAppRemove(targetChannels []string) ExecuteResult {
+	// Get channels we're a member of
+	allChannels, err := e.client.GetChannels()
+	if err != nil {
+		return ExecuteResult{Error: fmt.Errorf("failed to get channels: %w", err)}
+	}
+
+	// Filter channels if specific targets are provided
+	var channels []slack.Channel
+	if len(targetChannels) > 0 {
+		targetSet := make(map[string]bool)
+		for _, t := range targetChannels {
+			targetSet[strings.ToLower(t)] = true
+		}
+		for _, ch := range allChannels {
+			if targetSet[strings.ToLower(ch.Name)] {
+				channels = append(channels, ch)
+			}
+		}
+		if len(channels) == 0 {
+			return ExecuteResult{Output: "No matching channels found."}
+		}
+	} else {
+		channels = allChannels
+	}
+
+	var left, skipped, failed int
+	var output strings.Builder
+	if len(targetChannels) > 0 {
+		output.WriteString(fmt.Sprintf("Removing app from %d channel(s)...\n", len(channels)))
+	} else {
+		output.WriteString("Removing app from all channels...\n")
+	}
+
+	for _, ch := range channels {
+		// Skip private channels (only when removing all)
+		if ch.IsPrivate && len(targetChannels) == 0 {
+			skipped++
+			continue
+		}
+
+		_, err := e.client.LeaveChannel(ch.ID)
+		if err != nil {
+			errStr := err.Error()
+			if strings.Contains(errStr, "cant_leave_general") {
+				skipped++
+				output.WriteString(fmt.Sprintf("  - #%s (cannot leave general)\n", ch.Name))
+				continue
+			}
+			if strings.Contains(errStr, "not_in_channel") {
+				skipped++
+				continue
+			}
+			failed++
+			output.WriteString(fmt.Sprintf("  ✗ #%s: %s\n", ch.Name, err.Error()))
+		} else {
+			left++
+			output.WriteString(fmt.Sprintf("  ✓ #%s\n", ch.Name))
+		}
+		// Rate limit
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	output.WriteString(fmt.Sprintf("\nDone: %d left, %d skipped, %d failed", left, skipped, failed))
+
+	// Invalidate channel cache
+	e.channels = nil
+
+	return ExecuteResult{Output: output.String()}
+}
+
 // SwitchClient switches the executor to use a new client
 func (e *Executor) SwitchClient(client *slack.Client) {
 	e.client = client
@@ -629,6 +811,8 @@ func getCommandName(t CommandType) string {
 		return "version"
 	case CmdLive:
 		return "live"
+	case CmdSudo:
+		return "sudo"
 	default:
 		return "unknown"
 	}
@@ -789,6 +973,7 @@ var availableCommands = []string{
 	"quit",
 	"send",
 	"source",
+	"sudo",
 	"tail",
 	"version",
 }
