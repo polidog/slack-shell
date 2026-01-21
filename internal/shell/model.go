@@ -16,7 +16,7 @@ var (
 	promptStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	outputStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	tailStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	modeStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	newMsgStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	notificationStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("15")).
@@ -37,7 +37,6 @@ type Model struct {
 	width               int
 	height              int
 	ready               bool
-	tailMode            bool
 
 	// Browse mode
 	browseMode  bool
@@ -137,7 +136,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.liveModel.ShouldExit(msg) {
 				m.liveMode = false
 				m.liveModel = nil
-				m.history = append(m.history, tailStyle.Render("Exited live mode."))
+				m.history = append(m.history, modeStyle.Render("Exited live mode."))
 				m.input.Focus()
 				return m, nil
 			}
@@ -151,31 +150,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.browseModel.ShouldExit(msg) {
 				m.browseMode = false
 				m.browseModel = nil
-				m.history = append(m.history, tailStyle.Render("Exited browse mode."))
+				m.history = append(m.history, modeStyle.Render("Exited browse mode."))
 				m.input.Focus()
 				return m, nil
 			}
 			m.browseModel, cmd = m.browseModel.Update(msg)
 			return m, cmd
-		}
-
-		// Handle tail mode key events
-		if m.tailMode {
-			switch msg.Type {
-			case tea.KeyCtrlC, tea.KeyEsc:
-				m.tailMode = false
-				m.history = append(m.history, tailStyle.Render("Stopped tailing."))
-				m.input.Focus()
-				return m, nil
-			}
-			switch msg.String() {
-			case "q":
-				m.tailMode = false
-				m.history = append(m.history, tailStyle.Render("Stopped tailing."))
-				m.input.Focus()
-				return m, nil
-			}
-			return m, nil
 		}
 
 		// Normal mode key handling
@@ -226,7 +206,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	// Handle live mode messages
-	case LiveMessagesLoadedMsg, LiveThreadLoadedMsg, LiveMessageSentMsg, LiveReplySentMsg:
+	case LiveMessagesLoadedMsg, LiveThreadLoadedMsg, LiveMessageSentMsg, LiveReplySentMsg, LiveOlderMessagesLoadedMsg:
 		if m.liveMode && m.liveModel != nil {
 			m.liveModel, cmd = m.liveModel.Update(msg)
 			return m, cmd
@@ -267,14 +247,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			)
 		}
 
-		// Only show incoming messages in tail mode (live mode handles it in its own view)
-		if m.tailMode {
-			output := m.executor.HandleIncomingMessage(slackMsg)
-			if output != "" {
-				m.history = append(m.history, newMsgStyle.Render(output))
-			}
-		}
-
 		// Trigger notifications for messages from other channels
 		if m.notificationManager != nil {
 			currentChannelID := ""
@@ -297,12 +269,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				IsIM:        m.executor.IsIMChannel(slackMsg.ChannelID),
 			}
 
-			m.notificationManager.HandleMessage(notifyMsg, currentChannelID, m.tailMode || m.browseMode || m.liveMode)
+			m.notificationManager.HandleMessage(notifyMsg, currentChannelID, m.browseMode || m.liveMode)
 		}
 		return m, nil
 	}
 
-	if !m.tailMode && !m.browseMode && !m.liveMode {
+	if !m.browseMode && !m.liveMode {
 		m.input, cmd = m.input.Update(msg)
 	}
 	return m, cmd
@@ -329,11 +301,6 @@ func (m *Model) executeCommand() (tea.Model, tea.Cmd) {
 		} else {
 			// Parse and execute single command
 			parsedCmd = ParseCommand(input)
-
-			// Handle tail command specially
-			if parsedCmd.Type == CmdTail {
-				return m.startTailMode(parsedCmd)
-			}
 
 			// Handle browse command specially
 			if parsedCmd.Type == CmdBrowse {
@@ -376,39 +343,6 @@ func (m *Model) executeCommand() (tea.Model, tea.Cmd) {
 	// Update prompt
 	m.input.SetValue("")
 	m.input.Prompt = promptStyle.Render(m.executor.GetPrompt())
-
-	return m, nil
-}
-
-func (m *Model) startTailMode(cmd Command) (tea.Model, tea.Cmd) {
-	if m.executor.GetCurrentChannel() == nil {
-		m.history = append(m.history, errorStyle.Render("Not in a channel. Use 'cd #channel' first."))
-		m.input.SetValue("")
-		return m, nil
-	}
-
-	if m.realtimeClient == nil {
-		m.history = append(m.history, errorStyle.Render("Real-time connection not available. Set SLACK_APP_TOKEN to enable."))
-		m.input.SetValue("")
-		return m, nil
-	}
-
-	// Show initial messages first
-	catCmd := Command{Type: CmdCat, Flags: map[string]string{}}
-	if nFlag, ok := cmd.Flags["n"]; ok && nFlag != "" {
-		catCmd.Flags["n"] = nFlag
-	} else {
-		catCmd.Flags["n"] = "10"
-	}
-	result := m.executor.Execute(catCmd)
-	if result.Output != "" {
-		m.history = append(m.history, outputStyle.Render(result.Output))
-	}
-
-	m.tailMode = true
-	m.input.Blur()
-	m.history = append(m.history, tailStyle.Render("Tailing messages... (press 'q' or Ctrl+C to stop)"))
-	m.input.SetValue("")
 
 	return m, nil
 }
@@ -607,12 +541,8 @@ func (m *Model) View() string {
 		sb.WriteString("\n")
 	}
 
-	// Add input line or tail mode indicator
-	if m.tailMode {
-		sb.WriteString(tailStyle.Render(">>> Watching for new messages (q to quit) <<<"))
-	} else {
-		sb.WriteString(m.input.View())
-	}
+	// Add input line
+	sb.WriteString(m.input.View())
 
 	return sb.String()
 }

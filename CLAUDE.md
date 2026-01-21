@@ -34,18 +34,19 @@ go test ./...
 
 ### Shell Layer (`internal/shell/`)
 The shell package implements the TUI using Bubble Tea:
-- `model.go` - Main Bubble Tea model, handles key events, tail mode, browse mode, and tab completion
+- `model.go` - Main Bubble Tea model, handles key events, browse mode, live mode, and tab completion
 - `commands.go` - `Executor` struct that executes shell commands (ls, cd, cat, send, etc.) and manages state (current channel, cached channels/DMs/usernames)
 - `parser.go` - Command parsing, handles flags and arguments for each command type
 - `output.go` - Formats command output (channel lists, messages, errors, help text)
 - `browse.go` - Browse mode model for interactive message viewing with thread support
+- `live.go` - Live mode model for real-time message viewing and sending
 
 ### Slack API Layer (`internal/slack/`)
 - `client.go` - Main Slack API client wrapper, wraps `slack-go/slack`
 - `channels.go` - Channel listing (public, private, group DMs)
 - `messages.go` - Message fetching and posting
 - `threads.go` - Thread message handling
-- `realtime.go` - Socket Mode client for real-time message streaming (used by `tail` command)
+- `realtime.go` - Socket Mode client for real-time message streaming (used by `live` command)
 
 ### Supporting Packages
 - `internal/config/` - Configuration loading from `~/.slack-shell/config.yaml` and environment variables
@@ -59,10 +60,10 @@ The shell package implements the TUI using Bubble Tea:
 4. Output formatted by `shell.Format*()` functions
 5. Result displayed via `shell.Model.View()`
 
-For real-time messages (`tail` command):
+For real-time messages (`live` command):
 1. `slack.RealtimeClient` receives events via Socket Mode
 2. Events sent to Bubble Tea program via callback
-3. `shell.Model` updates history with incoming messages
+3. `shell.LiveModel` displays incoming messages in real-time
 
 ## Key Design Patterns
 
@@ -75,4 +76,4 @@ For real-time messages (`tail` command):
 
 - `SLACK_TOKEN` - Direct user token (xoxp-...)
 - `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` - OAuth credentials
-- `SLACK_APP_TOKEN` - App-level token (xapp-...) for Socket Mode (enables `tail` command)
+- `SLACK_APP_TOKEN` - App-level token (xapp-...) for Socket Mode (enables `live` command)

@@ -60,8 +60,12 @@ type LiveModel struct {
 	channelName string
 
 	// Loading state
-	loading    bool
-	loadingErr error
+	loading      bool
+	loadingErr   error
+	loadingOlder bool
+
+	// Pagination
+	hasMoreMessages bool
 }
 
 // NewLiveModel creates a new LiveModel
@@ -89,6 +93,7 @@ func (m *LiveModel) Init() tea.Cmd {
 // LiveMessagesLoadedMsg is sent when messages are loaded in live mode
 type LiveMessagesLoadedMsg struct {
 	Messages []slack.Message
+	HasMore  bool
 	Err      error
 }
 
@@ -108,16 +113,62 @@ type LiveReplySentMsg struct {
 	Err error
 }
 
+// LiveOlderMessagesLoadedMsg is sent when older messages are loaded
+type LiveOlderMessagesLoadedMsg struct {
+	Messages []slack.Message
+	HasMore  bool
+	Err      error
+}
+
 func (m *LiveModel) loadMessages() tea.Cmd {
 	return func() tea.Msg {
-		messages, err := m.client.GetMessages(m.channelID, 50)
-		return LiveMessagesLoadedMsg{Messages: messages, Err: err}
+		result, err := m.client.GetMessagesWithPagination(m.channelID, 50, "")
+		if err != nil {
+			return LiveMessagesLoadedMsg{Messages: nil, HasMore: false, Err: err}
+		}
+		// Resolve user names
+		m.resolveUserNames(result.Messages)
+		return LiveMessagesLoadedMsg{Messages: result.Messages, HasMore: result.HasMore, Err: nil}
+	}
+}
+
+func (m *LiveModel) loadOlderMessages() tea.Cmd {
+	if len(m.messages) == 0 {
+		return nil
+	}
+	// Get the oldest message timestamp
+	oldestTS := m.messages[0].Timestamp
+	return func() tea.Msg {
+		result, err := m.client.GetMessagesWithPagination(m.channelID, 50, oldestTS)
+		if err != nil {
+			return LiveOlderMessagesLoadedMsg{Messages: nil, HasMore: false, Err: err}
+		}
+		// Resolve user names
+		m.resolveUserNames(result.Messages)
+		return LiveOlderMessagesLoadedMsg{Messages: result.Messages, HasMore: result.HasMore, Err: nil}
+	}
+}
+
+// resolveUserNames fetches and caches user names for messages
+func (m *LiveModel) resolveUserNames(messages []slack.Message) {
+	for _, msg := range messages {
+		if msg.User != "" {
+			if _, ok := m.userCache[msg.User]; !ok {
+				user, err := m.client.GetUserInfo(msg.User)
+				if err == nil {
+					m.userCache[msg.User] = user.Name
+				}
+			}
+		}
 	}
 }
 
 func (m *LiveModel) loadThread(threadTS string) tea.Cmd {
 	return func() tea.Msg {
 		messages, err := m.client.GetThreadReplies(m.channelID, threadTS)
+		if err == nil {
+			m.resolveUserNames(messages)
+		}
 		return LiveThreadLoadedMsg{Messages: messages, Err: err}
 	}
 }
@@ -147,11 +198,28 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 			m.loadingErr = msg.Err
 		} else {
 			m.messages = msg.Messages
+			m.hasMoreMessages = msg.HasMore
 			// Select the last (newest) message by default
 			if len(m.messages) > 0 {
 				m.selectedIndex = len(m.messages) - 1
 				m.ensureVisible()
 			}
+		}
+		return m, nil
+
+	case LiveOlderMessagesLoadedMsg:
+		m.loadingOlder = false
+		if msg.Err != nil {
+			m.loadingErr = msg.Err
+		} else if len(msg.Messages) > 0 {
+			// Prepend older messages
+			m.messages = append(msg.Messages, m.messages...)
+			m.hasMoreMessages = msg.HasMore
+			// Adjust selectedIndex to keep the same message selected
+			m.selectedIndex += len(msg.Messages)
+			m.scrollOffset += len(msg.Messages)
+		} else {
+			m.hasMoreMessages = false
 		}
 		return m, nil
 
@@ -246,6 +314,10 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 			if m.selectedIndex > 0 {
 				m.selectedIndex--
 				m.ensureVisible()
+			} else if m.selectedIndex == 0 && m.hasMoreMessages && !m.loadingOlder {
+				// At the top, load older messages
+				m.loadingOlder = true
+				return m, m.loadOlderMessages()
 			}
 			return m, nil
 		case "down", "j":
@@ -374,6 +446,12 @@ func (m *LiveModel) View() string {
 func (m *LiveModel) renderMessageList() string {
 	var sb strings.Builder
 
+	// Show loading indicator for older messages
+	if m.loadingOlder {
+		sb.WriteString(liveHelpStyle.Render("Loading older messages..."))
+		sb.WriteString("\n")
+	}
+
 	visibleLines := m.getVisibleLines()
 	endIdx := m.scrollOffset + visibleLines
 	if endIdx > len(m.messages) {
@@ -394,8 +472,12 @@ func (m *LiveModel) renderMessageList() string {
 
 	// Scroll indicator
 	if len(m.messages) > visibleLines {
-		sb.WriteString(fmt.Sprintf("\n[%d-%d of %d messages]",
-			m.scrollOffset+1, endIdx, len(m.messages)))
+		moreIndicator := ""
+		if m.hasMoreMessages {
+			moreIndicator = " (↑ for more)"
+		}
+		sb.WriteString(fmt.Sprintf("\n[%d-%d of %d messages]%s",
+			m.scrollOffset+1, endIdx, len(m.messages), moreIndicator))
 	}
 
 	return sb.String()

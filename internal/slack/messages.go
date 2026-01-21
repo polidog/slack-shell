@@ -32,10 +32,30 @@ type Attachment struct {
 	Color string
 }
 
+// MessagesResult contains messages and pagination info
+type MessagesResult struct {
+	Messages []Message
+	HasMore  bool
+}
+
 func (c *Client) GetMessages(channelID string, limit int) ([]Message, error) {
+	result, err := c.GetMessagesWithPagination(channelID, limit, "")
+	if err != nil {
+		return nil, err
+	}
+	return result.Messages, nil
+}
+
+// GetMessagesWithPagination fetches messages with pagination support
+// If latest is provided, fetches messages before that timestamp
+func (c *Client) GetMessagesWithPagination(channelID string, limit int, latest string) (*MessagesResult, error) {
 	params := &slack.GetConversationHistoryParameters{
 		ChannelID: channelID,
 		Limit:     limit,
+	}
+
+	if latest != "" {
+		params.Latest = latest
 	}
 
 	history, err := c.api.GetConversationHistory(params)
@@ -86,7 +106,10 @@ func (c *Client) GetMessages(channelID string, limit int) ([]Message, error) {
 		messages[i], messages[j] = messages[j], messages[i]
 	}
 
-	return messages, nil
+	return &MessagesResult{
+		Messages: messages,
+		HasMore:  history.HasMore,
+	}, nil
 }
 
 func (c *Client) PostMessage(channelID, text string) (string, error) {

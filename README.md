@@ -12,8 +12,8 @@ Navigate Slack with familiar shell commands.
 
 - Browse channels and direct messages
 - View and send messages
-- Real-time message streaming with `tail` command
 - **`browse` command** - Interactive message browser with thread view and reply support
+- **`live` command** - Live mode with real-time updates and message sending
 - Real-time updates via Socket Mode (optional)
 - **OAuth authentication** - Easy browser-based login
 - **Shell-like UI** - Familiar command interface
@@ -115,9 +115,8 @@ slack> mkdir #new-channel    # Create a public channel
 slack> mkdir -p #private     # Create a private channel
 slack> cat                   # Show messages (default 20)
 slack> cat -n 50             # Show 50 messages
-slack> tail                  # Stream new messages in real-time
-slack> tail -n 10            # Show last 10, then stream
 slack> browse                # Interactive message browser
+slack> live                  # Live mode with real-time updates
 slack> send Hello world      # Send a message
 slack> pwd                   # Show current channel
 slack> source ~/work.yaml    # Switch workspace
@@ -158,12 +157,6 @@ Entered #general
 
 #general> send Hello!
 Message sent.
-
-#general> tail
-[10:30] alice: Good morning everyone
-[10:32] bob: Morning!
-Tailing messages... (press 'q' or Ctrl+C to stop)
->>> Watching for new messages (q to quit) <<<
 ```
 
 ## CLI Options
@@ -225,11 +218,13 @@ Useful for scripting and cron jobs.
 |-----|--------|
 | `↑` / `↓` | Navigate command history |
 | `Tab` | Auto-complete channel/user names for `cd` |
-| `Ctrl+C` | Exit (or stop tail mode) |
-| `q` | Stop tail/browse mode |
-| `j` / `k` | Navigate messages in browse mode |
-| `Enter` | View thread in browse mode |
-| `r` | Reply in browse mode |
+| `Ctrl+C` | Exit application |
+| `Ctrl+L` | Refresh screen |
+| `q` | Exit browse/live mode |
+| `j` / `k` | Navigate messages in browse/live mode |
+| `Enter` | View thread in browse/live mode |
+| `r` | Reply in browse/live mode |
+| `i` | New message in live mode |
 
 ## Browse Command
 
@@ -374,7 +369,7 @@ notifications:
 
 ## Real-time Updates (Socket Mode)
 
-For real-time message streaming (required for `tail` command):
+For real-time message streaming (required for `live` command):
 
 1. Enable **Socket Mode** in your Slack App settings
 2. Go to **Basic Information** → **App-Level Tokens** and create a new token
@@ -400,7 +395,7 @@ client_secret: your-client-secret
 # Or direct token
 slack_token: xoxp-your-token
 
-# Socket Mode (optional, required for tail)
+# Socket Mode (optional, required for live mode)
 app_token: xapp-your-app-token
 
 # Callback port (default: 8080)
@@ -534,7 +529,7 @@ export SLACK_TOKEN="xoxp-your-token"
 - Verify all required scopes are added
 - Reinstall the Slack App to your workspace
 
-### tail command not updating in real-time
+### live command not showing real-time updates
 - Verify `SLACK_APP_TOKEN` is set
 - Ensure Socket Mode is enabled
 

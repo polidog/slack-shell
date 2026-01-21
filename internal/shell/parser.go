@@ -14,7 +14,6 @@ const (
 	CmdCd
 	CmdBack
 	CmdCat
-	CmdTail
 	CmdSend
 	CmdPwd
 	CmdHelp
@@ -104,8 +103,6 @@ func parseCommandType(s string) CommandType {
 		return CmdCd
 	case "cat":
 		return CmdCat
-	case "tail":
-		return CmdTail
 	case "send":
 		return CmdSend
 	case "pwd":

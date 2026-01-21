@@ -12,8 +12,8 @@ GoとBubble Teaで作られたターミナルベースのSlackクライアント
 
 - 📺 チャンネルとダイレクトメッセージの閲覧
 - 💬 メッセージ履歴の表示・投稿
-- 🔄 `tail` コマンドでメッセージをリアルタイムストリーミング
 - 🗂️ **`browse` コマンド** - インタラクティブなメッセージブラウザ（スレッド表示・返信対応）
+- 🔄 **`live` コマンド** - リアルタイム更新とメッセージ送信が可能なライブモード
 - ⚡ Socket Modeによるリアルタイム更新（オプション）
 - 🔐 **OAuth認証対応** - ブラウザで簡単ログイン
 - 🐚 **シェルライクなUI** - 使い慣れたコマンド操作
@@ -115,9 +115,8 @@ slack> mkdir #new-channel    # パブリックチャンネルを作成
 slack> mkdir -p #private     # プライベートチャンネルを作成
 slack> cat                   # メッセージ表示（デフォルト20件）
 slack> cat -n 50             # 50件表示
-slack> tail                  # 新着メッセージをリアルタイム表示
-slack> tail -n 10            # 直近10件表示後、リアルタイム表示
 slack> browse                # インタラクティブメッセージブラウザ
+slack> live                  # リアルタイム更新のライブモード
 slack> send Hello world      # メッセージ送信
 slack> pwd                   # 現在のチャンネル表示
 slack> source ~/work.yaml    # ワークスペースを切り替え
@@ -158,25 +157,7 @@ Entered #general
 
 #general> send こんにちは
 Message sent.
-
-#general> tail
-[10:30] alice: おはようございます
-[10:32] bob: おはよう！
-Tailing messages... (press 'q' or Ctrl+C to stop)
->>> Watching for new messages (q to quit) <<<
 ```
-
-### tailコマンド（リアルタイムストリーミング）
-
-`tail` コマンドを使うと、`tail -f` のようにメッセージをリアルタイムで監視できます。
-
-```bash
-#general> tail           # 直近10件表示後、新着を監視
-#general> tail -n 20     # 直近20件表示後、新着を監視
-```
-
-- `q` キーまたは `Ctrl+C` で監視を終了
-- リアルタイム機能には `SLACK_APP_TOKEN` が必要です
 
 ### browseコマンド（インタラクティブブラウザ）
 
@@ -237,11 +218,13 @@ personal>
 |------|------|
 | `↑` / `↓` | コマンド履歴の移動 |
 | `Tab` | `cd` コマンドの補完（チャンネル名・ユーザー名） |
-| `Ctrl+C` | 終了（tailモード中は監視終了） |
-| `q` | tail/browseモード終了 |
-| `j` / `k` | browseモードでメッセージ移動 |
-| `Enter` | browseモードでスレッド表示 |
-| `r` | browseモードで返信 |
+| `Ctrl+C` | 終了 |
+| `Ctrl+L` | 画面リフレッシュ |
+| `q` | browse/liveモード終了 |
+| `j` / `k` | browse/liveモードでメッセージ移動 |
+| `Enter` | browse/liveモードでスレッド表示 |
+| `r` | browse/liveモードで返信 |
+| `i` | liveモードで新規メッセージ |
 
 ### Tab補完
 
@@ -429,7 +412,7 @@ slack> source ~/work-slack.yaml
 
 ## リアルタイム更新（Socket Mode）
 
-新着メッセージをリアルタイムで受信するには（`tail` コマンドに必要）:
+新着メッセージをリアルタイムで受信するには（`live` コマンドに必要）:
 
 1. Slack Appの設定で **Socket Mode** を有効化
 2. **Basic Information** → **App-Level Tokens** で新しいトークンを作成
@@ -455,7 +438,7 @@ client_secret: your-client-secret
 # または直接トークン指定
 slack_token: xoxp-your-token
 
-# Socket Mode用（オプション、tailコマンドに必要）
+# Socket Mode用（オプション、liveコマンドに必要）
 app_token: xapp-your-app-token
 
 # コールバックポート（デフォルト: 8080）
@@ -569,7 +552,7 @@ startup:
 - 必要なスコープがすべて追加されているか確認
 - Slack Appをワークスペースに再インストール
 
-### tailコマンドでリアルタイム更新されない
+### liveコマンドでリアルタイム更新されない
 
 - `SLACK_APP_TOKEN` が設定されているか確認
 - Socket Modeが有効になっているか確認

@@ -817,8 +817,6 @@ func getCommandName(t CommandType) string {
 		return ".."
 	case CmdCat:
 		return "cat"
-	case CmdTail:
-		return "tail"
 	case CmdSend:
 		return "send"
 	case CmdPwd:
@@ -1004,7 +1002,6 @@ var availableCommands = []string{
 	"send",
 	"source",
 	"sudo",
-	"tail",
 	"version",
 	"whoami",
 }
@@ -1026,7 +1023,7 @@ func (e *Executor) GetArgumentCompletions(cmd string, argPrefix string) []string
 	switch cmd {
 	case "cd":
 		return e.GetCompletions(argPrefix)
-	case "cat", "tail", "browse", "mkdir", "live":
+	case "cat", "browse", "mkdir", "live":
 		// These commands also work with channels
 		return e.GetCompletions(argPrefix)
 	case "source":

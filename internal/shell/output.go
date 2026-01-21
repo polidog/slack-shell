@@ -140,8 +140,6 @@ func FormatHelp() string {
   mkdir -p #chan  Create a private channel
   cat             Show messages (default 20)
   cat -n 50       Show 50 messages
-  tail            Stream new messages (press 'q' to stop)
-  tail -n 10      Show last 10 messages, then stream
   browse          Interactive message browser
                   (j/k: navigate, Enter: view thread, r: reply, q: exit)
   live            Live mode with real-time updates and message sending
