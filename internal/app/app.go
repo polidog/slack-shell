@@ -126,7 +126,7 @@ func (a *App) Run() error {
 	notifyCfg := a.config.GetNotificationConfig()
 	a.notificationManager = notification.NewManager(notifyCfg)
 
-	model := shell.NewModel(a.slackClient, a.notificationManager, a.config.GetPromptConfig(), a.config.GetStartupConfig())
+	model := shell.NewModel(a.slackClient, a.notificationManager, a.config.GetPromptConfig(), a.config.GetStartupConfig(), a.config.AppToken != "")
 
 	// Set up realtime client if app token is available
 	if a.config.Debug {
@@ -188,7 +188,7 @@ func Logout() error {
 
 // RunCommand executes a command string and exits (non-interactive mode)
 func (a *App) RunCommand(commandStr string) error {
-	executor := shell.NewExecutor(a.slackClient, a.config.GetPromptConfig())
+	executor := shell.NewExecutor(a.slackClient, a.config.GetPromptConfig(), a.config.AppToken != "")
 
 	// Split by && or ; for multiple commands
 	commands := splitCommands(commandStr)

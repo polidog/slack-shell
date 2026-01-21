@@ -22,10 +22,11 @@ type Executor struct {
 	currentChannel *slack.Channel
 	workspaceName  string
 	promptConfig   *config.PromptConfig
+	hasAppToken    bool
 }
 
 // NewExecutor creates a new command executor
-func NewExecutor(client *slack.Client, promptConfig *config.PromptConfig) *Executor {
+func NewExecutor(client *slack.Client, promptConfig *config.PromptConfig, hasAppToken bool) *Executor {
 	workspaceName := "slack"
 	if info, err := client.GetTeamInfo(); err == nil && info != nil {
 		workspaceName = info.Name
@@ -40,6 +41,7 @@ func NewExecutor(client *slack.Client, promptConfig *config.PromptConfig) *Execu
 		userNames:     make(map[string]string),
 		workspaceName: workspaceName,
 		promptConfig:  promptConfig,
+		hasAppToken:   hasAppToken,
 	}
 }
 
@@ -91,6 +93,8 @@ func (e *Executor) Execute(cmd Command) ExecuteResult {
 		return ExecuteResult{Output: version.String()}
 	case CmdSudo:
 		return e.executeSudo(cmd)
+	case CmdWhoami:
+		return e.executeWhoami()
 	default:
 		return ExecuteResult{Output: "Unknown command. Type 'help' for available commands."}
 	}
@@ -503,6 +507,24 @@ func (e *Executor) executeMkdir(cmd Command) ExecuteResult {
 	return ExecuteResult{Output: fmt.Sprintf("Channel %s%s created.", prefix, channel.Name)}
 }
 
+func (e *Executor) executeWhoami() ExecuteResult {
+	var output strings.Builder
+
+	output.WriteString("Authentication Info:\n")
+	output.WriteString(fmt.Sprintf("  Token Type:  %s\n", e.client.GetTokenType()))
+	output.WriteString(fmt.Sprintf("  Token:       %s\n", e.client.GetTokenPrefix()))
+	output.WriteString(fmt.Sprintf("  User:        @%s (%s)\n", e.client.GetUserName(), e.client.GetUserID()))
+	output.WriteString(fmt.Sprintf("  Workspace:   %s (%s)\n", e.client.GetTeamName(), e.client.GetTeamID()))
+
+	if e.hasAppToken {
+		output.WriteString("  Socket Mode: Enabled (app token configured)\n")
+	} else {
+		output.WriteString("  Socket Mode: Disabled (no app token)\n")
+	}
+
+	return ExecuteResult{Output: output.String()}
+}
+
 func (e *Executor) executeSudo(cmd Command) ExecuteResult {
 	if len(cmd.Args) < 2 {
 		return ExecuteResult{Output: "Usage: sudo app install [#channel...] | sudo app remove [#channel...]"}
@@ -813,6 +835,8 @@ func getCommandName(t CommandType) string {
 		return "live"
 	case CmdSudo:
 		return "sudo"
+	case CmdWhoami:
+		return "whoami"
 	default:
 		return "unknown"
 	}
@@ -976,6 +1000,7 @@ var availableCommands = []string{
 	"sudo",
 	"tail",
 	"version",
+	"whoami",
 }
 
 // GetCommandCompletions returns completion candidates for command names

@@ -58,8 +58,8 @@ type Model struct {
 }
 
 // NewModel creates a new shell model
-func NewModel(client *slack.Client, notifyMgr *notification.Manager, promptConfig *config.PromptConfig, startupConfig *config.StartupConfig) *Model {
-	executor := NewExecutor(client, promptConfig)
+func NewModel(client *slack.Client, notifyMgr *notification.Manager, promptConfig *config.PromptConfig, startupConfig *config.StartupConfig, hasAppToken bool) *Model {
+	executor := NewExecutor(client, promptConfig, hasAppToken)
 
 	ti := textinput.New()
 	ti.Prompt = promptStyle.Render(executor.GetPrompt())

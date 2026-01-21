@@ -287,6 +287,11 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 				return m, textinput.Blink
 			}
 			return m, nil
+		case "R":
+			// Reload messages
+			m.loading = true
+			m.loadingErr = nil
+			return m, m.loadMessages()
 		}
 	}
 

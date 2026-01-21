@@ -1,11 +1,14 @@
 package slack
 
 import (
+	"strings"
+
 	"github.com/slack-go/slack"
 )
 
 type Client struct {
 	api      *slack.Client
+	token    string
 	userID   string
 	userName string
 	teamID   string
@@ -23,6 +26,7 @@ func NewClient(token string) (*Client, error) {
 
 	return &Client{
 		api:      api,
+		token:    token,
 		userID:   authTest.UserID,
 		userName: authTest.User,
 		teamID:   authTest.TeamID,
@@ -58,4 +62,30 @@ func (c *Client) GetTeamInfo() (*TeamInfo, error) {
 
 func (c *Client) GetTeamName() string {
 	return c.teamName
+}
+
+func (c *Client) GetTeamID() string {
+	return c.teamID
+}
+
+// GetTokenType returns the type of token being used
+func (c *Client) GetTokenType() string {
+	if strings.HasPrefix(c.token, "xoxp-") {
+		return "User Token (xoxp-)"
+	}
+	if strings.HasPrefix(c.token, "xoxb-") {
+		return "Bot Token (xoxb-)"
+	}
+	if strings.HasPrefix(c.token, "xoxs-") {
+		return "Legacy Token (xoxs-)"
+	}
+	return "Unknown"
+}
+
+// GetTokenPrefix returns the first part of the token for display (masked)
+func (c *Client) GetTokenPrefix() string {
+	if len(c.token) > 15 {
+		return c.token[:15] + "..."
+	}
+	return c.token
 }

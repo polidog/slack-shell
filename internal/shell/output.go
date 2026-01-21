@@ -151,6 +151,7 @@ Admin commands:
   sudo app install #ch1 #ch2    Join specific channels
   sudo app remove               Leave all public channels
   sudo app remove #ch1 #ch2     Leave specific channels
+  whoami                        Show current authentication info
 
 Pipe support:
   ls | grep <pattern>     Search channels/DMs by name
