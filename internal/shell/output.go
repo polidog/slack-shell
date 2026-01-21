@@ -2,6 +2,7 @@ package shell
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -92,8 +93,11 @@ func FormatMessages(messages []slack.Message, userNames map[string]string) strin
 			userName = "bot"
 		}
 
+		// Resolve mentions in text
+		text := ResolveMentions(msg.Text, userNames)
+
 		// Format the message
-		sb.WriteString(fmt.Sprintf("[%s] %s: %s\n", timeStr, userName, msg.Text))
+		sb.WriteString(fmt.Sprintf("[%s] %s: %s\n", timeStr, userName, text))
 
 		// Show attachments
 		for _, att := range msg.Attachments {
@@ -175,6 +179,23 @@ func FormatError(err error) string {
 // FormatSuccess formats a success message
 func FormatSuccess(msg string) string {
 	return msg
+}
+
+// ResolveMentions replaces <@USER_ID> patterns with @username
+func ResolveMentions(text string, userNames map[string]string) string {
+	// Match <@U12345> or <@U12345|display_name> patterns
+	re := regexp.MustCompile(`<@([A-Z0-9]+)(?:\|[^>]*)?>`)
+	return re.ReplaceAllStringFunc(text, func(match string) string {
+		// Extract user ID from the match
+		matches := re.FindStringSubmatch(match)
+		if len(matches) > 1 {
+			userID := matches[1]
+			if name, ok := userNames[userID]; ok {
+				return "@" + name
+			}
+		}
+		return match
+	})
 }
 
 func parseTimestamp(ts string) time.Time {
