@@ -184,7 +184,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case tea.KeyCtrlL:
-			return m, tea.ClearScreen
+			return m, tea.Batch(tea.ClearScreen, tea.WindowSize())
 
 		case tea.KeyEnter:
 			m.resetCompletion()
