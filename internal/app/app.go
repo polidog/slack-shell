@@ -17,16 +17,31 @@ type App struct {
 	realtimeClient      *slack.RealtimeClient
 	notificationManager *notification.Manager
 	program             *tea.Program
+	nonInteractive      bool
 }
 
-func New() (*App, error) {
+// Option is a functional option for App
+type Option func(*App)
+
+// WithNonInteractive sets the app to non-interactive mode (suppresses startup messages)
+func WithNonInteractive() Option {
+	return func(a *App) {
+		a.nonInteractive = true
+	}
+}
+
+func New(opts ...Option) (*App, error) {
+	app := &App{}
+	for _, opt := range opts {
+		opt(app)
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, fmt.Errorf("設定の読み込みに失敗しました: %w", err)
 	}
 
 	// Get token
-	token, err := getToken(cfg)
+	token, err := getToken(cfg, app.nonInteractive)
 	if err != nil {
 		return nil, err
 	}
@@ -36,13 +51,12 @@ func New() (*App, error) {
 		return nil, fmt.Errorf("Slackクライアントの作成に失敗しました: %w", err)
 	}
 
-	return &App{
-		config:      cfg,
-		slackClient: slackClient,
-	}, nil
+	app.config = cfg
+	app.slackClient = slackClient
+	return app, nil
 }
 
-func getToken(cfg *config.Config) (string, error) {
+func getToken(cfg *config.Config, nonInteractive bool) (string, error) {
 	// 1. Check for direct token (environment variable or config file)
 	if cfg.HasDirectToken() {
 		return cfg.SlackToken, nil
@@ -51,13 +65,17 @@ func getToken(cfg *config.Config) (string, error) {
 	// 2. Check for saved credentials
 	creds, err := config.LoadCredentials()
 	if err == nil && creds.AccessToken != "" {
-		fmt.Printf("保存済みの認証情報を使用します (ワークスペース: %s)\n", creds.TeamName)
+		if !nonInteractive {
+			fmt.Printf("保存済みの認証情報を使用します (ワークスペース: %s)\n", creds.TeamName)
+		}
 		return creds.AccessToken, nil
 	}
 
 	// 3. OAuth flow
 	if cfg.HasOAuthConfig() {
-		fmt.Println("OAuth認証を開始します...")
+		if !nonInteractive {
+			fmt.Println("OAuth認証を開始します...")
+		}
 
 		oauthFlow, err := oauth.NewOAuthFlow(cfg)
 		if err != nil {
@@ -71,9 +89,13 @@ func getToken(cfg *config.Config) (string, error) {
 
 		// Save credentials
 		if err := config.SaveCredentials(creds); err != nil {
-			fmt.Printf("警告: 認証情報の保存に失敗しました: %v\n", err)
+			if !nonInteractive {
+				fmt.Printf("警告: 認証情報の保存に失敗しました: %v\n", err)
+			}
 		} else {
-			fmt.Println("認証情報を保存しました。")
+			if !nonInteractive {
+				fmt.Println("認証情報を保存しました。")
+			}
 		}
 
 		return creds.AccessToken, nil

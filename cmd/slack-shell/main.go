@@ -63,7 +63,7 @@ func main() {
 	// Check for -c option (execute command and exit)
 	if len(os.Args) > 2 && os.Args[1] == "-c" {
 		command := os.Args[2]
-		application, err := app.New()
+		application, err := app.New(app.WithNonInteractive())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
