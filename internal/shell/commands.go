@@ -9,6 +9,7 @@ import (
 
 	"github.com/polidog/slack-shell/internal/config"
 	"github.com/polidog/slack-shell/internal/slack"
+	"github.com/polidog/slack-shell/internal/version"
 )
 
 // Executor handles command execution
@@ -85,6 +86,8 @@ func (e *Executor) Execute(cmd Command) ExecuteResult {
 		return e.executeSource(cmd)
 	case CmdMkdir:
 		return e.executeMkdir(cmd)
+	case CmdVersion:
+		return ExecuteResult{Output: version.String()}
 	default:
 		return ExecuteResult{Output: "Unknown command. Type 'help' for available commands."}
 	}
@@ -622,6 +625,8 @@ func getCommandName(t CommandType) string {
 		return "browse"
 	case CmdMkdir:
 		return "mkdir"
+	case CmdVersion:
+		return "version"
 	default:
 		return "unknown"
 	}
@@ -782,6 +787,7 @@ var availableCommands = []string{
 	"send",
 	"source",
 	"tail",
+	"version",
 }
 
 // GetCommandCompletions returns completion candidates for command names

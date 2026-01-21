@@ -23,6 +23,7 @@ const (
 	CmdGrep
 	CmdBrowse
 	CmdMkdir
+	CmdVersion
 )
 
 // Pipeline represents a series of commands connected by pipes
@@ -118,6 +119,8 @@ func parseCommandType(s string) CommandType {
 		return CmdBrowse
 	case "mkdir":
 		return CmdMkdir
+	case "version":
+		return CmdVersion
 	default:
 		return CmdUnknown
 	}

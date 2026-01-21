@@ -6,9 +6,16 @@ import (
 
 	"github.com/polidog/slack-shell/internal/app"
 	"github.com/polidog/slack-shell/internal/config"
+	"github.com/polidog/slack-shell/internal/version"
 )
 
 func main() {
+	// Check for version command
+	if len(os.Args) > 1 && (os.Args[1] == "version" || os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Println(version.String())
+		return
+	}
+
 	// Check for logout command
 	if len(os.Args) > 1 && os.Args[1] == "logout" {
 		if err := app.Logout(); err != nil {
