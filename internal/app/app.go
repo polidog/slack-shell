@@ -2,9 +2,11 @@ package app
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/polidog/slack-shell/internal/cache"
 	"github.com/polidog/slack-shell/internal/config"
 	"github.com/polidog/slack-shell/internal/notification"
 	"github.com/polidog/slack-shell/internal/oauth"
@@ -17,6 +19,8 @@ type App struct {
 	slackClient         *slack.Client
 	realtimeClient      *slack.RealtimeClient
 	notificationManager *notification.Manager
+	userCache           *cache.UserCache
+	model               *shell.Model
 	program             *tea.Program
 	nonInteractive      bool
 }
@@ -54,6 +58,22 @@ func New(opts ...Option) (*App, error) {
 
 	app.config = cfg
 	app.slackClient = slackClient
+
+	// Initialize user cache
+	if teamID := slackClient.GetTeamID(); teamID != "" {
+		cacheDir, err := config.GetCacheDir()
+		if err != nil {
+			log.Printf("Warning: failed to get cache directory: %v", err)
+		} else {
+			userCache, err := cache.NewUserCache(cacheDir, teamID, cache.DefaultTTL)
+			if err != nil {
+				log.Printf("Warning: failed to initialize user cache: %v", err)
+			} else {
+				app.userCache = userCache
+			}
+		}
+	}
+
 	return app, nil
 }
 
@@ -127,6 +147,12 @@ func (a *App) Run() error {
 	a.notificationManager = notification.NewManager(notifyCfg)
 
 	model := shell.NewModel(a.slackClient, a.notificationManager, a.config.GetPromptConfig(), a.config.GetStartupConfig(), a.config.AppToken != "")
+	a.model = model
+
+	// Set user cache if available
+	if a.userCache != nil {
+		model.SetUserCache(a.userCache)
+	}
 
 	// Set up realtime client if app token is available
 	if a.config.Debug {
@@ -169,6 +195,13 @@ func (a *App) Run() error {
 }
 
 func (a *App) Stop() {
+	// Save user cache
+	if a.userCache != nil {
+		if err := a.userCache.Save(); err != nil {
+			log.Printf("Warning: failed to save user cache: %v", err)
+		}
+	}
+
 	if a.realtimeClient != nil {
 		a.realtimeClient.Stop()
 	}
@@ -188,7 +221,7 @@ func Logout() error {
 
 // RunCommand executes a command string and exits (non-interactive mode)
 func (a *App) RunCommand(commandStr string) error {
-	executor := shell.NewExecutor(a.slackClient, a.config.GetPromptConfig(), a.config.AppToken != "")
+	executor := shell.NewExecutorWithCache(a.slackClient, a.config.GetPromptConfig(), a.config.AppToken != "", a.userCache)
 
 	// Split by && or ; for multiple commands
 	commands := splitCommands(commandStr)
@@ -219,6 +252,11 @@ func (a *App) RunCommand(commandStr string) error {
 		if result.Exit {
 			break
 		}
+	}
+
+	// Save the cache after running commands
+	if err := executor.SaveCache(); err != nil {
+		log.Printf("Warning: failed to save user cache: %v", err)
 	}
 
 	return nil

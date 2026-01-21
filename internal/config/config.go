@@ -97,6 +97,31 @@ func GetConfigDir() (string, error) {
 	return filepath.Join(homeDir, ".config", "slack-shell"), nil
 }
 
+// GetCacheDir returns the cache directory path.
+// Uses XDG_CACHE_HOME if set, otherwise ~/.cache/slack-shell/
+func GetCacheDir() (string, error) {
+	// Check XDG_CACHE_HOME first
+	if xdgCache := os.Getenv("XDG_CACHE_HOME"); xdgCache != "" {
+		return filepath.Join(xdgCache, "slack-shell"), nil
+	}
+
+	// Default to ~/.cache/slack-shell/
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".cache", "slack-shell"), nil
+}
+
+// GetWorkspaceCacheDir returns the cache directory for a specific workspace (team).
+func GetWorkspaceCacheDir(teamID string) (string, error) {
+	cacheDir, err := GetCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cacheDir, teamID), nil
+}
+
 // GetLegacyConfigDir returns the legacy configuration directory path (~/.slack-shell/)
 func GetLegacyConfigDir() (string, error) {
 	homeDir, err := os.UserHomeDir()

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/polidog/slack-shell/internal/cache"
 	"github.com/polidog/slack-shell/internal/config"
 	"github.com/polidog/slack-shell/internal/slack"
 	"github.com/polidog/slack-shell/internal/version"
@@ -18,7 +19,8 @@ type Executor struct {
 	client         *slack.Client
 	channels       []slack.Channel
 	dms            []slack.Channel
-	userNames      map[string]string
+	userNames      map[string]string // In-memory cache for backward compatibility
+	userCache      *cache.UserCache  // Persistent cache
 	currentChannel *slack.Channel
 	workspaceName  string
 	promptConfig   *config.PromptConfig
@@ -27,6 +29,11 @@ type Executor struct {
 
 // NewExecutor creates a new command executor
 func NewExecutor(client *slack.Client, promptConfig *config.PromptConfig, hasAppToken bool) *Executor {
+	return NewExecutorWithCache(client, promptConfig, hasAppToken, nil)
+}
+
+// NewExecutorWithCache creates a new command executor with a user cache
+func NewExecutorWithCache(client *slack.Client, promptConfig *config.PromptConfig, hasAppToken bool, userCache *cache.UserCache) *Executor {
 	workspaceName := "slack"
 	if info, err := client.GetTeamInfo(); err == nil && info != nil {
 		workspaceName = info.Name
@@ -36,9 +43,16 @@ func NewExecutor(client *slack.Client, promptConfig *config.PromptConfig, hasApp
 		promptConfig = config.DefaultPromptConfig()
 	}
 
+	// Initialize in-memory map from cache if available
+	userNames := make(map[string]string)
+	if userCache != nil {
+		userNames = userCache.ToMap()
+	}
+
 	return &Executor{
 		client:        client,
-		userNames:     make(map[string]string),
+		userNames:     userNames,
+		userCache:     userCache,
 		workspaceName: workspaceName,
 		promptConfig:  promptConfig,
 		hasAppToken:   hasAppToken,
@@ -127,14 +141,17 @@ func (e *Executor) executeLs(cmd Command) ExecuteResult {
 		userIDs := make([]string, 0, len(e.dms))
 		for _, dm := range e.dms {
 			if dm.UserID != "" {
-				userIDs = append(userIDs, dm.UserID)
+				// Check if already cached
+				if _, ok := e.userNames[dm.UserID]; !ok {
+					userIDs = append(userIDs, dm.UserID)
+				}
 			}
 		}
 		if len(userIDs) > 0 {
 			users, err := e.client.GetUsersInfo(userIDs)
 			if err == nil && users != nil {
 				for _, u := range *users {
-					e.userNames[u.ID] = u.Name
+					e.setUserName(u.ID, u.Name)
 				}
 			}
 		}
@@ -207,18 +224,20 @@ func (e *Executor) enterDM(userName string) ExecuteResult {
 		}
 		e.dms = dms
 
-		// Load user names
+		// Load user names (only those not already cached)
 		userIDs := make([]string, 0, len(e.dms))
 		for _, dm := range e.dms {
 			if dm.UserID != "" {
-				userIDs = append(userIDs, dm.UserID)
+				if _, ok := e.userNames[dm.UserID]; !ok {
+					userIDs = append(userIDs, dm.UserID)
+				}
 			}
 		}
 		if len(userIDs) > 0 {
 			users, err := e.client.GetUsersInfo(userIDs)
 			if err == nil && users != nil {
 				for _, u := range *users {
-					e.userNames[u.ID] = u.Name
+					e.setUserName(u.ID, u.Name)
 				}
 			}
 		}
@@ -268,11 +287,13 @@ func (e *Executor) executeCat(cmd Command) ExecuteResult {
 		return ExecuteResult{Error: fmt.Errorf("failed to load messages: %w", err)}
 	}
 
-	// Load user names for messages
+	// Load user names for messages (only those not already cached)
 	userIDs := make(map[string]bool)
 	for _, msg := range messages {
 		if msg.User != "" && msg.UserName == "" {
-			userIDs[msg.User] = true
+			if _, ok := e.userNames[msg.User]; !ok {
+				userIDs[msg.User] = true
+			}
 		}
 	}
 
@@ -284,7 +305,7 @@ func (e *Executor) executeCat(cmd Command) ExecuteResult {
 		users, err := e.client.GetUsersInfo(ids)
 		if err == nil && users != nil {
 			for _, u := range *users {
-				e.userNames[u.ID] = u.Name
+				e.setUserName(u.ID, u.Name)
 			}
 		}
 	}
@@ -712,10 +733,14 @@ func (e *Executor) executeSudoAppRemove(targetChannels []string) ExecuteResult {
 
 // SwitchClient switches the executor to use a new client
 func (e *Executor) SwitchClient(client *slack.Client) {
+	// Save current cache before switching
+	e.SaveCache()
+
 	e.client = client
 	e.channels = nil
 	e.dms = nil
 	e.userNames = make(map[string]string)
+	e.userCache = nil // Will be set by caller if needed
 	e.currentChannel = nil
 
 	// Update workspace name
@@ -723,6 +748,36 @@ func (e *Executor) SwitchClient(client *slack.Client) {
 	if info, err := client.GetTeamInfo(); err == nil && info != nil {
 		e.workspaceName = info.Name
 	}
+}
+
+// SetUserCache sets the user cache (used when switching workspaces)
+func (e *Executor) SetUserCache(userCache *cache.UserCache) {
+	e.userCache = userCache
+	if userCache != nil {
+		// Load cached usernames into memory
+		e.userNames = userCache.ToMap()
+	}
+}
+
+// setUserName stores a user name in both in-memory map and persistent cache
+func (e *Executor) setUserName(userID, name string) {
+	e.userNames[userID] = name
+	if e.userCache != nil {
+		e.userCache.Set(userID, name)
+	}
+}
+
+// SaveCache saves the user cache to disk
+func (e *Executor) SaveCache() error {
+	if e.userCache == nil {
+		return nil
+	}
+	return e.userCache.Save()
+}
+
+// GetUserCache returns the current user cache
+func (e *Executor) GetUserCache() *cache.UserCache {
+	return e.userCache
 }
 
 // HandleIncomingMessage handles a real-time message
@@ -740,7 +795,7 @@ func (e *Executor) HandleIncomingMessage(msg slack.IncomingMessage) string {
 		// Try to fetch user info
 		user, err := e.client.GetUserInfo(msg.UserID)
 		if err == nil && user != nil {
-			e.userNames[msg.UserID] = user.Name
+			e.setUserName(msg.UserID, user.Name)
 			userName = user.Name
 		}
 	}
@@ -877,7 +932,7 @@ func (e *Executor) GetUserName(userID string) string {
 	// Try to fetch user info
 	user, err := e.client.GetUserInfo(userID)
 	if err == nil && user != nil {
-		e.userNames[userID] = user.Name
+		e.setUserName(userID, user.Name)
 		return user.Name
 	}
 
@@ -926,17 +981,19 @@ func (e *Executor) GetCompletions(prefix string) []string {
 	}
 
 	// Load user names for DMs if not yet loaded
-	if len(e.dms) > 0 && len(e.userNames) == 0 {
+	if len(e.dms) > 0 {
 		userIDs := make([]string, 0, len(e.dms))
 		for _, dm := range e.dms {
 			if dm.UserID != "" {
-				userIDs = append(userIDs, dm.UserID)
+				if _, ok := e.userNames[dm.UserID]; !ok {
+					userIDs = append(userIDs, dm.UserID)
+				}
 			}
 		}
 		if len(userIDs) > 0 {
 			if users, err := e.client.GetUsersInfo(userIDs); err == nil && users != nil {
 				for _, u := range *users {
-					e.userNames[u.ID] = u.Name
+					e.setUserName(u.ID, u.Name)
 				}
 			}
 		}

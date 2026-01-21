@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/polidog/slack-shell/internal/cache"
 	"github.com/polidog/slack-shell/internal/config"
 	"github.com/polidog/slack-shell/internal/notification"
 	"github.com/polidog/slack-shell/internal/slack"
@@ -81,6 +82,21 @@ func NewModel(client *slack.Client, notifyMgr *notification.Manager, promptConfi
 // SetRealtimeClient sets the realtime client for receiving messages
 func (m *Model) SetRealtimeClient(rc *slack.RealtimeClient) {
 	m.realtimeClient = rc
+}
+
+// SetUserCache sets the user cache for the executor
+func (m *Model) SetUserCache(userCache *cache.UserCache) {
+	m.executor.SetUserCache(userCache)
+}
+
+// SaveUserCache saves the user cache to disk
+func (m *Model) SaveUserCache() error {
+	return m.executor.SaveCache()
+}
+
+// GetExecutor returns the executor (for cache access)
+func (m *Model) GetExecutor() *Executor {
+	return m.executor
 }
 
 // Init initializes the model
