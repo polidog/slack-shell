@@ -939,6 +939,11 @@ func (e *Executor) GetUserName(userID string) string {
 	return userID
 }
 
+// GetCurrentUserID returns the current authenticated user's ID
+func (e *Executor) GetCurrentUserID() string {
+	return e.client.GetUserID()
+}
+
 // IsMentionedInMessage checks if the current user is mentioned in the message
 func (e *Executor) IsMentionedInMessage(text string) bool {
 	// Check for @here, @channel, @everyone
@@ -949,8 +954,11 @@ func (e *Executor) IsMentionedInMessage(text string) bool {
 	}
 
 	// Check for direct mention (<@USER_ID>)
-	// We would need the current user ID to check this properly
-	// For now, return false as we don't have access to current user ID here
+	currentUserID := e.client.GetUserID()
+	if currentUserID != "" && strings.Contains(text, fmt.Sprintf("<@%s>", currentUserID)) {
+		return true
+	}
+
 	return false
 }
 

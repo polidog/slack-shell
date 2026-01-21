@@ -263,8 +263,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			)
 		}
 
-		// Trigger notifications for messages from other channels
-		if m.notificationManager != nil {
+		// Trigger notifications for messages from other channels (skip self messages)
+		if m.notificationManager != nil && slackMsg.UserID != m.executor.GetCurrentUserID() {
 			currentChannelID := ""
 			currentChannel := m.executor.GetCurrentChannel()
 			if currentChannel != nil {
