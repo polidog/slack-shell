@@ -71,9 +71,11 @@ type StartupConfig struct {
 
 type Credentials struct {
 	AccessToken  string `json:"access_token"`
+	BotToken     string `json:"bot_token,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 	TokenType    string `json:"token_type"`
 	Scope        string `json:"scope"`
+	BotScope     string `json:"bot_scope,omitempty"`
 	UserID       string `json:"user_id"`
 	TeamID       string `json:"team_id"`
 	TeamName     string `json:"team_name"`

@@ -266,8 +266,13 @@ func (c *Client) GetAllPublicChannels() ([]Channel, error) {
 }
 
 // JoinChannel joins a channel (bot joins itself)
+// Uses bot token if available, otherwise falls back to user token
 func (c *Client) JoinChannel(channelID string) error {
-	_, _, _, err := c.api.JoinConversation(channelID)
+	api := c.api
+	if c.botAPI != nil {
+		api = c.botAPI
+	}
+	_, _, _, err := api.JoinConversation(channelID)
 	return err
 }
 

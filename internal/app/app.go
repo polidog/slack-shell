@@ -41,13 +41,13 @@ func New(opts ...Option) (*App, error) {
 		return nil, fmt.Errorf("設定の読み込みに失敗しました: %w", err)
 	}
 
-	// Get token
-	token, err := getToken(cfg, app.nonInteractive)
+	// Get tokens
+	token, botToken, err := getTokens(cfg, app.nonInteractive)
 	if err != nil {
 		return nil, err
 	}
 
-	slackClient, err := slack.NewClient(token)
+	slackClient, err := slack.NewClientWithBotToken(token, botToken)
 	if err != nil {
 		return nil, fmt.Errorf("Slackクライアントの作成に失敗しました: %w", err)
 	}
@@ -57,10 +57,10 @@ func New(opts ...Option) (*App, error) {
 	return app, nil
 }
 
-func getToken(cfg *config.Config, nonInteractive bool) (string, error) {
+func getTokens(cfg *config.Config, nonInteractive bool) (string, string, error) {
 	// 1. Check for direct token (environment variable or config file)
 	if cfg.HasDirectToken() {
-		return cfg.SlackToken, nil
+		return cfg.SlackToken, "", nil
 	}
 
 	// 2. Check for saved credentials
@@ -69,7 +69,7 @@ func getToken(cfg *config.Config, nonInteractive bool) (string, error) {
 		if !nonInteractive {
 			fmt.Printf("保存済みの認証情報を使用します (ワークスペース: %s)\n", creds.TeamName)
 		}
-		return creds.AccessToken, nil
+		return creds.AccessToken, creds.BotToken, nil
 	}
 
 	// 3. OAuth flow
@@ -80,12 +80,12 @@ func getToken(cfg *config.Config, nonInteractive bool) (string, error) {
 
 		oauthFlow, err := oauth.NewOAuthFlow(cfg)
 		if err != nil {
-			return "", fmt.Errorf("OAuth初期化に失敗しました: %w", err)
+			return "", "", fmt.Errorf("OAuth初期化に失敗しました: %w", err)
 		}
 
 		creds, err := oauthFlow.Start()
 		if err != nil {
-			return "", fmt.Errorf("OAuth認証に失敗しました: %w", err)
+			return "", "", fmt.Errorf("OAuth認証に失敗しました: %w", err)
 		}
 
 		// Save credentials
@@ -99,11 +99,11 @@ func getToken(cfg *config.Config, nonInteractive bool) (string, error) {
 			}
 		}
 
-		return creds.AccessToken, nil
+		return creds.AccessToken, creds.BotToken, nil
 	}
 
 	// 4. No authentication method available
-	return "", fmt.Errorf(`認証情報が見つかりません。
+	return "", "", fmt.Errorf(`認証情報が見つかりません。
 
 以下のいずれかの方法で認証を設定してください:
 

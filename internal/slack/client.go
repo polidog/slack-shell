@@ -8,7 +8,9 @@ import (
 
 type Client struct {
 	api      *slack.Client
+	botAPI   *slack.Client
 	token    string
+	botToken string
 	userID   string
 	userName string
 	teamID   string
@@ -16,6 +18,10 @@ type Client struct {
 }
 
 func NewClient(token string) (*Client, error) {
+	return NewClientWithBotToken(token, "")
+}
+
+func NewClientWithBotToken(token, botToken string) (*Client, error) {
 	api := slack.New(token)
 
 	// Test authentication and get user info
@@ -24,14 +30,22 @@ func NewClient(token string) (*Client, error) {
 		return nil, err
 	}
 
-	return &Client{
+	client := &Client{
 		api:      api,
 		token:    token,
+		botToken: botToken,
 		userID:   authTest.UserID,
 		userName: authTest.User,
 		teamID:   authTest.TeamID,
 		teamName: authTest.Team,
-	}, nil
+	}
+
+	// Create bot API client if bot token is provided
+	if botToken != "" {
+		client.botAPI = slack.New(botToken)
+	}
+
+	return client, nil
 }
 
 func (c *Client) GetUserID() string {
@@ -88,4 +102,14 @@ func (c *Client) GetTokenPrefix() string {
 		return c.token[:15] + "..."
 	}
 	return c.token
+}
+
+// HasBotToken returns true if a bot token is configured
+func (c *Client) HasBotToken() bool {
+	return c.botAPI != nil
+}
+
+// BotAPI returns the bot API client (may be nil if no bot token)
+func (c *Client) BotAPI() *slack.Client {
+	return c.botAPI
 }

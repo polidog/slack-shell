@@ -27,8 +27,8 @@ const (
 	slackTokenURL     = "https://slack.com/api/oauth.v2.access"
 )
 
-// Required scopes for the application
-var requiredScopes = []string{
+// Required scopes for user token
+var requiredUserScopes = []string{
 	"channels:read",
 	"channels:history",
 	"groups:read",
@@ -41,6 +41,13 @@ var requiredScopes = []string{
 	"users:read",
 	"chat:write",
 	"team:read",
+}
+
+// Required scopes for bot token
+var requiredBotScopes = []string{
+	"channels:join",
+	"channels:read",
+	"chat:write",
 }
 
 type OAuthFlow struct {
@@ -147,7 +154,8 @@ func (o *OAuthFlow) Start() (*config.Credentials, error) {
 func (o *OAuthFlow) buildAuthURL() string {
 	params := url.Values{}
 	params.Set("client_id", o.clientID)
-	params.Set("user_scope", strings.Join(requiredScopes, ","))
+	params.Set("user_scope", strings.Join(requiredUserScopes, ","))
+	params.Set("scope", strings.Join(requiredBotScopes, ","))
 	params.Set("redirect_uri", fmt.Sprintf("https://localhost:%d/callback", o.redirectPort))
 	params.Set("state", o.state)
 
@@ -248,21 +256,26 @@ func (o *OAuthFlow) exchangeCodeForToken(code string) (*config.Credentials, erro
 		return nil, fmt.Errorf("token exchange failed: %s", tokenResp.Error)
 	}
 
-	// Use user token if available, otherwise use bot token
-	accessToken := tokenResp.AuthedUser.AccessToken
-	if accessToken == "" {
-		accessToken = tokenResp.AccessToken
-	}
+	// User token (xoxp-)
+	userToken := tokenResp.AuthedUser.AccessToken
+	userScope := tokenResp.AuthedUser.Scope
 
-	scope := tokenResp.AuthedUser.Scope
-	if scope == "" {
-		scope = tokenResp.Scope
+	// Bot token (xoxb-)
+	botToken := tokenResp.AccessToken
+	botScope := tokenResp.Scope
+
+	// Use user token as primary access token
+	accessToken := userToken
+	if accessToken == "" {
+		accessToken = botToken
 	}
 
 	return &config.Credentials{
 		AccessToken: accessToken,
+		BotToken:    botToken,
 		TokenType:   tokenResp.TokenType,
-		Scope:       scope,
+		Scope:       userScope,
+		BotScope:    botScope,
 		UserID:      tokenResp.AuthedUser.ID,
 		TeamID:      tokenResp.Team.ID,
 		TeamName:    tokenResp.Team.Name,
