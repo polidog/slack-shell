@@ -7,13 +7,14 @@ import (
 )
 
 type Channel struct {
-	ID        string
-	Name      string
-	IsChannel bool
-	IsPrivate bool
-	IsIM      bool
-	IsMpIM    bool
-	UserID    string // For DMs, the other user's ID
+	ID          string
+	Name        string
+	IsChannel   bool
+	IsPrivate   bool
+	IsIM        bool
+	IsMpIM      bool
+	IsExtShared bool   // Slack Connect (externally shared) channel
+	UserID      string // For DMs, the other user's ID
 }
 
 func (c *Client) GetChannels() ([]Channel, error) {
@@ -249,10 +250,11 @@ func (c *Client) GetAllPublicChannels() ([]Channel, error) {
 
 		for _, conv := range convs {
 			channels = append(channels, Channel{
-				ID:        conv.ID,
-				Name:      conv.Name,
-				IsChannel: true,
-				IsPrivate: false,
+				ID:          conv.ID,
+				Name:        conv.Name,
+				IsChannel:   true,
+				IsPrivate:   false,
+				IsExtShared: conv.IsExtShared,
 			})
 		}
 

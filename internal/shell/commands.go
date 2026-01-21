@@ -594,6 +594,12 @@ func (e *Executor) executeSudoAppInstall(targetChannels []string) ExecuteResult 
 	}
 
 	for _, ch := range channels {
+		// Skip Slack Connect (externally shared) channels
+		if ch.IsExtShared {
+			skipped++
+			continue
+		}
+
 		err := e.client.JoinChannel(ch.ID)
 		if err != nil {
 			// Check if it's a permission error
