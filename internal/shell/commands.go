@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/polidog/slack-shell/internal/config"
@@ -295,12 +296,53 @@ func (e *Executor) executeSend(cmd Command) ExecuteResult {
 		return ExecuteResult{Output: "Usage: send <message>"}
 	}
 
+	// Convert @username mentions to <@USER_ID> format
+	message = e.convertMentions(message)
+
 	_, err := e.client.PostMessage(e.currentChannel.ID, message)
 	if err != nil {
 		return ExecuteResult{Error: fmt.Errorf("failed to send message: %w", err)}
 	}
 
 	return ExecuteResult{Output: "Message sent."}
+}
+
+// convertMentions converts @username patterns to Slack's <@USER_ID> format
+func (e *Executor) convertMentions(message string) string {
+	// Match @username patterns including Unicode characters (for Japanese names, etc.)
+	// but not already converted patterns like <@U12345>
+	// \p{L} matches any Unicode letter, \p{N} matches any Unicode number
+	mentionRegex := regexp.MustCompile(`(?:^|[^<])@([\p{L}\p{N}._-]+)`)
+
+	return mentionRegex.ReplaceAllStringFunc(message, func(match string) string {
+		// Extract the prefix (if any) and username
+		// Use rune slice to handle multibyte characters correctly
+		runes := []rune(match)
+		prefix := ""
+		username := match
+		if runes[0] != '@' {
+			prefix = string(runes[0])
+			username = string(runes[1:])
+		}
+		// Remove the @ from username
+		username = strings.TrimPrefix(username, "@")
+
+		// First check cached userNames (reverse lookup)
+		for userID, name := range e.userNames {
+			if strings.EqualFold(name, username) {
+				return prefix + "<@" + userID + ">"
+			}
+		}
+
+		// If not found in cache, try API lookup
+		userID, _, err := e.client.GetUserByName(username)
+		if err != nil || userID == "" {
+			// Return original if user not found
+			return match
+		}
+
+		return prefix + "<@" + userID + ">"
+	})
 }
 
 func (e *Executor) executePwd() ExecuteResult {

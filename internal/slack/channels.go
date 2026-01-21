@@ -1,6 +1,8 @@
 package slack
 
 import (
+	"strings"
+
 	"github.com/slack-go/slack"
 )
 
@@ -163,6 +165,54 @@ func (c *Client) GetUsersInfo(userIDs []string) (*[]slack.User, error) {
 	}
 
 	return &allUsers, nil
+}
+
+// GetUserByName finds a user or bot/app by their display name or real name
+// Returns user ID and name if found, empty strings if not found
+// Prioritizes human users over bots when names match
+func (c *Client) GetUserByName(name string) (userID string, userName string, err error) {
+	// Use users.list API to search for users
+	users, err := c.api.GetUsers()
+	if err != nil {
+		return "", "", err
+	}
+
+	// Normalize the search name (lowercase)
+	searchName := strings.ToLower(name)
+
+	// First pass: look for human users only
+	for _, user := range users {
+		// Skip deleted users and bots in first pass
+		if user.Deleted || user.IsBot {
+			continue
+		}
+
+		// Check various name fields (case-insensitive)
+		if strings.ToLower(user.Name) == searchName ||
+			strings.ToLower(user.Profile.DisplayName) == searchName ||
+			strings.ToLower(user.Profile.DisplayNameNormalized) == searchName ||
+			strings.ToLower(user.RealName) == searchName {
+			return user.ID, user.Name, nil
+		}
+	}
+
+	// Second pass: look for bots/apps if no human user found
+	for _, user := range users {
+		// Skip deleted users, only look at bots
+		if user.Deleted || !user.IsBot {
+			continue
+		}
+
+		// Check various name fields (case-insensitive)
+		if strings.ToLower(user.Name) == searchName ||
+			strings.ToLower(user.Profile.DisplayName) == searchName ||
+			strings.ToLower(user.Profile.DisplayNameNormalized) == searchName ||
+			strings.ToLower(user.RealName) == searchName {
+			return user.ID, user.Name, nil
+		}
+	}
+
+	return "", "", nil
 }
 
 func (c *Client) CreateChannel(name string, isPrivate bool) (*Channel, error) {
