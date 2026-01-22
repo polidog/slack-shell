@@ -6,7 +6,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/polidog/slack-shell/internal/cache"
@@ -58,7 +58,7 @@ type LiveModel struct {
 
 	// Input mode
 	inputMode InputMode
-	inputText textinput.Model
+	inputText textarea.Model
 
 	channelID   string
 	channelName string
@@ -74,10 +74,12 @@ type LiveModel struct {
 
 // NewLiveModel creates a new LiveModel
 func NewLiveModel(client *slack.Client, channelID, channelName string, userCache map[string]string, displayConfig *config.DisplayConfig) *LiveModel {
-	ti := textinput.New()
-	ti.Placeholder = "Type a message..."
-	ti.CharLimit = 1000
-	ti.Width = 60
+	ta := textarea.New()
+	ta.Placeholder = "Type a message..."
+	ta.CharLimit = 4000
+	ta.SetWidth(60)
+	ta.SetHeight(3)
+	ta.ShowLineNumbers = false
 
 	if displayConfig == nil {
 		displayConfig = config.DefaultDisplayConfig()
@@ -89,7 +91,7 @@ func NewLiveModel(client *slack.Client, channelID, channelName string, userCache
 		channelName:   channelName,
 		userCache:     userCache,
 		displayConfig: displayConfig,
-		inputText:     ti,
+		inputText:     ta,
 		loading:       true,
 	}
 }
@@ -266,34 +268,73 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.inputText.Width = msg.Width - 20
+		m.inputText.SetWidth(msg.Width - 20)
 		return m, nil
 
 	case tea.KeyMsg:
 		// Handle input mode
 		if m.inputMode != InputModeNone {
+			// Get send key setting (default to "enter")
+			sendKey := m.displayConfig.LiveSendKey
+			if sendKey == "" {
+				sendKey = "enter"
+			}
+
 			switch msg.Type {
 			case tea.KeyEsc:
 				m.inputMode = InputModeNone
 				m.inputText.Blur()
-				m.inputText.SetValue("")
+				m.inputText.Reset()
 				return m, nil
 			case tea.KeyEnter:
-				text := strings.TrimSpace(m.inputText.Value())
-				if text != "" {
-					currentMode := m.inputMode
-					m.inputMode = InputModeNone
-					m.inputText.Blur()
-					m.inputText.SetValue("")
+				// Check for shift modifier (shift+enter always inserts newline in "enter" mode)
+				if sendKey == "enter" && !msg.Alt {
+					// Enter sends message (unless shift is held)
+					// Note: Bubble Tea represents shift+enter differently
+					text := strings.TrimSpace(m.inputText.Value())
+					if text != "" {
+						currentMode := m.inputMode
+						m.inputMode = InputModeNone
+						m.inputText.Blur()
+						m.inputText.Reset()
 
-					if currentMode == InputModeNewMessage {
-						return m, m.sendMessage(text)
-					} else if currentMode == InputModeReply {
-						return m, m.sendReply(m.threadTS, text)
+						if currentMode == InputModeNewMessage {
+							return m, m.sendMessage(text)
+						} else if currentMode == InputModeReply {
+							return m, m.sendReply(m.threadTS, text)
+						}
 					}
+					return m, nil
 				}
-				return m, nil
+				// ctrl+enter mode: Enter inserts newline (let textarea handle it)
+				m.inputText, cmd = m.inputText.Update(msg)
+				return m, cmd
+			case tea.KeyCtrlJ: // Ctrl+Enter is often sent as Ctrl+J
+				if sendKey == "ctrl+enter" {
+					text := strings.TrimSpace(m.inputText.Value())
+					if text != "" {
+						currentMode := m.inputMode
+						m.inputMode = InputModeNone
+						m.inputText.Blur()
+						m.inputText.Reset()
+
+						if currentMode == InputModeNewMessage {
+							return m, m.sendMessage(text)
+						} else if currentMode == InputModeReply {
+							return m, m.sendReply(m.threadTS, text)
+						}
+					}
+					return m, nil
+				}
+				m.inputText, cmd = m.inputText.Update(msg)
+				return m, cmd
 			default:
+				// Check for shift+enter in "enter" mode (insert newline)
+				if sendKey == "enter" && msg.String() == "shift+enter" {
+					// Insert newline manually
+					m.inputText.InsertString("\n")
+					return m, nil
+				}
 				m.inputText, cmd = m.inputText.Update(msg)
 				return m, cmd
 			}
@@ -312,7 +353,7 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 					m.inputMode = InputModeReply
 					m.inputText.Placeholder = "Type your reply..."
 					m.inputText.Focus()
-					return m, textinput.Blink
+					return m, textarea.Blink
 				}
 				return m, nil
 			}
@@ -357,7 +398,7 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 			m.inputMode = InputModeNewMessage
 			m.inputText.Placeholder = "Type a message..."
 			m.inputText.Focus()
-			return m, textinput.Blink
+			return m, textarea.Blink
 		case "r":
 			// Reply to selected message directly (create thread or reply in existing thread)
 			if len(m.messages) > 0 && m.selectedIndex < len(m.messages) {
@@ -370,7 +411,7 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 				m.inputMode = InputModeReply
 				m.inputText.Placeholder = "Type your reply..."
 				m.inputText.Focus()
-				return m, textinput.Blink
+				return m, textarea.Blink
 			}
 			return m, nil
 		case "R":
@@ -711,7 +752,15 @@ func (m *LiveModel) getTotalLinesInRange(startIdx, endIdx int) int {
 func (m *LiveModel) renderHelp() string {
 	var help string
 	if m.inputMode != InputModeNone {
-		help = "Enter: send | Esc: cancel"
+		sendKey := m.displayConfig.LiveSendKey
+		if sendKey == "" {
+			sendKey = "enter"
+		}
+		if sendKey == "ctrl+enter" {
+			help = "Ctrl+Enter: send | Enter: newline | Esc: cancel"
+		} else {
+			help = "Enter: send | Shift+Enter: newline | Esc: cancel"
+		}
 	} else if m.threadVisible {
 		help = "r: reply | q/Esc: back | j/k: scroll"
 	} else {

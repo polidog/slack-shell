@@ -52,6 +52,12 @@ type DisplayConfig struct {
 	// LiveTruncateMessages controls whether messages are truncated in live mode
 	// Default: false (show full messages)
 	LiveTruncateMessages bool `yaml:"live_truncate_messages"`
+
+	// LiveSendKey specifies how messages are sent in live mode
+	// Options:
+	//   "enter" - Enter to send, Shift+Enter for newline (default, like Slack desktop)
+	//   "ctrl+enter" - Ctrl+Enter to send, Enter for newline
+	LiveSendKey string `yaml:"live_send_key"`
 }
 
 // PromptConfig defines prompt customization settings
@@ -320,7 +326,8 @@ func (c *Config) GetDisplayConfig() *DisplayConfig {
 // DefaultDisplayConfig returns the default display configuration
 func DefaultDisplayConfig() *DisplayConfig {
 	return &DisplayConfig{
-		NameFormat: "display_name",
+		NameFormat:  "display_name",
+		LiveSendKey: "enter",
 	}
 }
 
@@ -466,6 +473,12 @@ display:
   # Default: false (show full messages)
   # Note: Thread view always shows full messages regardless of this setting
   live_truncate_messages: false
+
+  # How messages are sent in live mode input
+  # Options:
+  #   "enter"       - Enter to send, Shift+Enter for newline (default, like Slack desktop)
+  #   "ctrl+enter"  - Ctrl+Enter to send, Enter for newline
+  live_send_key: "enter"
 
 # ============================================================
 # Keybindings (Vim-like defaults)
