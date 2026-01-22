@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/kyokomi/emoji/v2"
 	"github.com/polidog/slack-shell/internal/slack"
 )
@@ -138,7 +139,8 @@ func FormatMessages(messages []slack.Message, userNames map[string]string) strin
 func FormatHelp() string {
 	return `Available commands:
 
-  ls              List channels and DMs
+  ls              List channels and DMs (uses cache)
+  ls -r           List channels and DMs (refresh cache)
   ls dm           List DMs only
   cd #channel     Enter a channel
   cd @user        Enter a DM
@@ -147,6 +149,8 @@ func FormatHelp() string {
   mkdir -p #chan  Create a private channel
   cat             Show messages (default 20)
   cat -n 50       Show 50 messages
+  show            Show channel info and members (default 20)
+  show -n 50      Show channel info with 50 members
   browse          Interactive message browser
                   (j/k: navigate, Enter: view thread, r: reply, q: exit)
   live            Live mode with real-time updates and message sending
@@ -213,4 +217,90 @@ func parseTimestamp(ts string) time.Time {
 		sec = sec*10 + int64(ts[i]-'0')
 	}
 	return time.Unix(sec, 0)
+}
+
+// FormatChannelInfo formats channel information for display
+func FormatChannelInfo(info *slack.ChannelInfo, memberIDs []string, userNames map[string]string, creatorName string, memberLimit int) string {
+	var sb strings.Builder
+
+	// Define styles using ANSI colors (adapts to terminal theme)
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("14")) // bright cyan
+
+	privateStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("11")) // bright yellow
+
+	labelStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("8")) // bright black (gray)
+
+	valueStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("15")) // bright white
+
+	accentStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("10")) // bright green
+
+	userStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("9")) // bright red
+
+	mutedStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("8")) // bright black (gray)
+
+	sectionStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("13")) // bright magenta
+
+	// Channel name and type
+	if info.IsPrivate {
+		sb.WriteString(privateStyle.Render("🔒 "+info.Name) + "\n")
+	} else {
+		sb.WriteString(titleStyle.Render("# "+info.Name) + "\n")
+	}
+	sb.WriteString(mutedStyle.Render(strings.Repeat("─", len(info.Name)+4)) + "\n\n")
+
+	// Basic info
+	if info.Purpose != "" {
+		sb.WriteString(labelStyle.Render("Purpose: ") + valueStyle.Render(info.Purpose) + "\n")
+	}
+	if info.Topic != "" {
+		sb.WriteString(labelStyle.Render("Topic:   ") + valueStyle.Render(info.Topic) + "\n")
+	}
+
+	// Creator and created time
+	if creatorName != "" {
+		created := time.Unix(info.Created, 0)
+		sb.WriteString(labelStyle.Render("Created: ") +
+			valueStyle.Render(created.Format("2006-01-02")) +
+			labelStyle.Render(" by ") +
+			userStyle.Render("@"+creatorName) + "\n")
+	}
+
+	// Member count
+	sb.WriteString(labelStyle.Render("Members: ") + accentStyle.Render(fmt.Sprintf("%d", info.MemberCount)) + "\n")
+
+	// Flags
+	if info.IsGeneral {
+		sb.WriteString(labelStyle.Render("Type:    ") + accentStyle.Render("General channel (default)") + "\n")
+	}
+	if info.IsArchived {
+		sb.WriteString(labelStyle.Render("Status:  ") + privateStyle.Render("Archived") + "\n")
+	}
+
+	// Member list
+	if len(memberIDs) > 0 {
+		sb.WriteString("\n" + sectionStyle.Render("Member list:") + "\n")
+		for _, id := range memberIDs {
+			name := id
+			if userName, ok := userNames[id]; ok {
+				name = userName
+			}
+			sb.WriteString("  " + userStyle.Render("@"+name) + "\n")
+		}
+		if info.MemberCount > memberLimit {
+			sb.WriteString(mutedStyle.Render(fmt.Sprintf("  ... and %d more (use -n to show more)\n", info.MemberCount-memberLimit)))
+		}
+	}
+
+	return sb.String()
 }

@@ -19,8 +19,9 @@ type Executor struct {
 	client         *slack.Client
 	channels       []slack.Channel
 	dms            []slack.Channel
-	userNames      map[string]string // In-memory cache for backward compatibility
-	userCache      *cache.UserCache  // Persistent cache
+	userNames      map[string]string    // In-memory cache for backward compatibility
+	userCache      *cache.UserCache     // Persistent cache
+	channelCache   *cache.ChannelCache  // Persistent channel cache
 	currentChannel *slack.Channel
 	workspaceName  string
 	promptConfig   *config.PromptConfig
@@ -30,11 +31,11 @@ type Executor struct {
 
 // NewExecutor creates a new command executor
 func NewExecutor(client *slack.Client, promptConfig *config.PromptConfig, hasAppToken bool) *Executor {
-	return NewExecutorWithCache(client, promptConfig, nil, hasAppToken, nil)
+	return NewExecutorWithCache(client, promptConfig, nil, hasAppToken, nil, nil)
 }
 
 // NewExecutorWithCache creates a new command executor with a user cache
-func NewExecutorWithCache(client *slack.Client, promptConfig *config.PromptConfig, displayConfig *config.DisplayConfig, hasAppToken bool, userCache *cache.UserCache) *Executor {
+func NewExecutorWithCache(client *slack.Client, promptConfig *config.PromptConfig, displayConfig *config.DisplayConfig, hasAppToken bool, userCache *cache.UserCache, channelCache *cache.ChannelCache) *Executor {
 	workspaceName := "slack"
 	if info, err := client.GetTeamInfo(); err == nil && info != nil {
 		workspaceName = info.Name
@@ -59,15 +60,62 @@ func NewExecutorWithCache(client *slack.Client, promptConfig *config.PromptConfi
 		}
 	}
 
+	// Load channels from cache if available
+	var channels []slack.Channel
+	var dms []slack.Channel
+	if channelCache != nil {
+		if cachedChannels := channelCache.GetChannels(); cachedChannels != nil {
+			channels = convertCachedChannels(cachedChannels)
+		}
+		if cachedDMs := channelCache.GetDMs(); cachedDMs != nil {
+			dms = convertCachedChannels(cachedDMs)
+		}
+	}
+
 	return &Executor{
 		client:        client,
+		channels:      channels,
+		dms:           dms,
 		userNames:     userNames,
 		userCache:     userCache,
+		channelCache:  channelCache,
 		workspaceName: workspaceName,
 		promptConfig:  promptConfig,
 		displayConfig: displayConfig,
 		hasAppToken:   hasAppToken,
 	}
+}
+
+// convertCachedChannels converts cached channels to slack.Channel
+func convertCachedChannels(cached []cache.CachedChannel) []slack.Channel {
+	channels := make([]slack.Channel, len(cached))
+	for i, c := range cached {
+		channels[i] = slack.Channel{
+			ID:          c.ID,
+			Name:        c.Name,
+			IsPrivate:   c.IsPrivate,
+			IsIM:        c.IsIM,
+			IsExtShared: c.IsExtShared,
+			UserID:      c.UserID,
+		}
+	}
+	return channels
+}
+
+// convertToCachedChannels converts slack.Channel to cached channels
+func convertToCachedChannels(channels []slack.Channel) []cache.CachedChannel {
+	cached := make([]cache.CachedChannel, len(channels))
+	for i, c := range channels {
+		cached[i] = cache.CachedChannel{
+			ID:          c.ID,
+			Name:        c.Name,
+			IsPrivate:   c.IsPrivate,
+			IsIM:        c.IsIM,
+			IsExtShared: c.IsExtShared,
+			UserID:      c.UserID,
+		}
+	}
+	return cached
 }
 
 // SetWorkspaceName allows setting the workspace name (used when switching workspaces)
@@ -120,6 +168,8 @@ func (e *Executor) Execute(cmd Command) ExecuteResult {
 		return e.executeSudo(cmd)
 	case CmdWhoami:
 		return e.executeWhoami()
+	case CmdShow:
+		return e.executeShow(cmd)
 	default:
 		return ExecuteResult{Output: "Unknown command. Type 'help' for available commands."}
 	}
@@ -129,21 +179,32 @@ func (e *Executor) executeLs(cmd Command) ExecuteResult {
 	// Check if we should only show DMs
 	dmOnly := len(cmd.Args) > 0 && cmd.Args[0] == "dm"
 
+	// Check if we should force refresh the cache
+	forceRefresh := cmd.GetFlagBool("r") || cmd.GetFlagBool("refresh")
+
 	var err error
 
 	// Load channels if needed
-	if !dmOnly && e.channels == nil {
+	if !dmOnly && (e.channels == nil || forceRefresh) {
 		e.channels, err = e.client.GetChannels()
 		if err != nil {
 			return ExecuteResult{Error: fmt.Errorf("failed to load channels: %w", err)}
 		}
+		// Save to persistent cache
+		if e.channelCache != nil {
+			e.channelCache.SetChannels(convertToCachedChannels(e.channels))
+		}
 	}
 
 	// Load DMs
-	if e.dms == nil {
+	if e.dms == nil || forceRefresh {
 		e.dms, err = e.client.GetDMs()
 		if err != nil {
 			return ExecuteResult{Error: fmt.Errorf("failed to load DMs: %w", err)}
+		}
+		// Save to persistent cache
+		if e.channelCache != nil {
+			e.channelCache.SetDMs(convertToCachedChannels(e.dms))
 		}
 	}
 
@@ -557,6 +618,71 @@ func (e *Executor) executeWhoami() ExecuteResult {
 	return ExecuteResult{Output: output.String()}
 }
 
+func (e *Executor) executeShow(cmd Command) ExecuteResult {
+	if e.currentChannel == nil {
+		return ExecuteResult{Output: "Not in a channel. Use 'cd #channel' first."}
+	}
+
+	// DMs don't support show command
+	if e.currentChannel.IsIM {
+		return ExecuteResult{Output: "show command is not supported for direct messages."}
+	}
+
+	// Get channel info
+	info, err := e.client.GetChannelInfo(e.currentChannel.ID)
+	if err != nil {
+		return ExecuteResult{Error: fmt.Errorf("failed to get channel info: %w", err)}
+	}
+
+	// Get member limit from -n flag (default 20)
+	memberLimit := cmd.GetFlagInt("n", 20)
+	if memberLimit <= 0 {
+		memberLimit = 20
+	}
+	if memberLimit > 100 {
+		memberLimit = 100
+	}
+
+	// Get channel members
+	memberIDs, err := e.client.GetChannelMembers(e.currentChannel.ID, memberLimit)
+	if err != nil {
+		return ExecuteResult{Error: fmt.Errorf("failed to get channel members: %w", err)}
+	}
+
+	// Load user names for members (only those not already cached)
+	uncachedIDs := make([]string, 0)
+	for _, id := range memberIDs {
+		if _, ok := e.userNames[id]; !ok {
+			uncachedIDs = append(uncachedIDs, id)
+		}
+	}
+
+	if len(uncachedIDs) > 0 {
+		users, err := e.client.GetUsersInfo(uncachedIDs)
+		if err == nil && users != nil {
+			for _, u := range *users {
+				e.setUserFull(u.ID, u.Name, u.Profile.DisplayName, u.RealName)
+			}
+		}
+	}
+
+	// Get creator name
+	creatorName := info.Creator
+	if info.Creator != "" {
+		if name, ok := e.userNames[info.Creator]; ok {
+			creatorName = name
+		} else {
+			user, err := e.client.GetUserInfo(info.Creator)
+			if err == nil && user != nil {
+				e.setUserFull(user.ID, user.Name, user.Profile.DisplayName, user.RealName)
+				creatorName = e.userNames[info.Creator]
+			}
+		}
+	}
+
+	return ExecuteResult{Output: FormatChannelInfo(info, memberIDs, e.userNames, creatorName, memberLimit)}
+}
+
 func (e *Executor) executeSudo(cmd Command) ExecuteResult {
 	if len(cmd.Args) < 2 {
 		return ExecuteResult{Output: "Usage: sudo app install [#channel...] | sudo app remove [#channel...]"}
@@ -751,7 +877,8 @@ func (e *Executor) SwitchClient(client *slack.Client) {
 	e.channels = nil
 	e.dms = nil
 	e.userNames = make(map[string]string)
-	e.userCache = nil // Will be set by caller if needed
+	e.userCache = nil    // Will be set by caller if needed
+	e.channelCache = nil // Will be set by caller if needed
 	e.currentChannel = nil
 
 	// Update workspace name
@@ -768,6 +895,25 @@ func (e *Executor) SetUserCache(userCache *cache.UserCache) {
 		// Load cached usernames into memory
 		e.userNames = userCache.ToMap()
 	}
+}
+
+// SetChannelCache sets the channel cache (used when switching workspaces)
+func (e *Executor) SetChannelCache(channelCache *cache.ChannelCache) {
+	e.channelCache = channelCache
+	if channelCache != nil {
+		// Load cached channels into memory
+		if cachedChannels := channelCache.GetChannels(); cachedChannels != nil {
+			e.channels = convertCachedChannels(cachedChannels)
+		}
+		if cachedDMs := channelCache.GetDMs(); cachedDMs != nil {
+			e.dms = convertCachedChannels(cachedDMs)
+		}
+	}
+}
+
+// GetChannelCache returns the current channel cache
+func (e *Executor) GetChannelCache() *cache.ChannelCache {
+	return e.channelCache
 }
 
 // setUserName stores a user name in both in-memory map and persistent cache
@@ -789,12 +935,23 @@ func (e *Executor) setUserFull(userID, name, displayName, realName string) {
 	}
 }
 
-// SaveCache saves the user cache to disk
+// SaveCache saves both user and channel caches to disk
 func (e *Executor) SaveCache() error {
-	if e.userCache == nil {
-		return nil
+	var errs []error
+	if e.userCache != nil {
+		if err := e.userCache.Save(); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	return e.userCache.Save()
+	if e.channelCache != nil {
+		if err := e.channelCache.Save(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return errs[0]
+	}
+	return nil
 }
 
 // GetUserCache returns the current user cache
@@ -918,6 +1075,8 @@ func getCommandName(t CommandType) string {
 		return "sudo"
 	case CmdWhoami:
 		return "whoami"
+	case CmdShow:
+		return "show"
 	default:
 		return "unknown"
 	}
@@ -1087,6 +1246,7 @@ var availableCommands = []string{
 	"pwd",
 	"quit",
 	"send",
+	"show",
 	"source",
 	"sudo",
 	"version",

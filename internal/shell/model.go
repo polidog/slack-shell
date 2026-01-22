@@ -59,7 +59,7 @@ type Model struct {
 
 // NewModel creates a new shell model
 func NewModel(client *slack.Client, notifyMgr *notification.Manager, promptConfig *config.PromptConfig, displayConfig *config.DisplayConfig, startupConfig *config.StartupConfig, hasAppToken bool) *Model {
-	executor := NewExecutorWithCache(client, promptConfig, displayConfig, hasAppToken, nil)
+	executor := NewExecutorWithCache(client, promptConfig, displayConfig, hasAppToken, nil, nil)
 
 	ti := textinput.New()
 	ti.Prompt = promptStyle.Render(executor.GetPrompt())
@@ -87,6 +87,11 @@ func (m *Model) SetRealtimeClient(rc *slack.RealtimeClient) {
 // SetUserCache sets the user cache for the executor
 func (m *Model) SetUserCache(userCache *cache.UserCache) {
 	m.executor.SetUserCache(userCache)
+}
+
+// SetChannelCache sets the channel cache for the executor
+func (m *Model) SetChannelCache(channelCache *cache.ChannelCache) {
+	m.executor.SetChannelCache(channelCache)
 }
 
 // SaveUserCache saves the user cache to disk

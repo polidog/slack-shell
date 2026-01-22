@@ -20,6 +20,7 @@ type App struct {
 	realtimeClient      *slack.RealtimeClient
 	notificationManager *notification.Manager
 	userCache           *cache.UserCache
+	channelCache        *cache.ChannelCache
 	model               *shell.Model
 	program             *tea.Program
 	nonInteractive      bool
@@ -59,17 +60,25 @@ func New(opts ...Option) (*App, error) {
 	app.config = cfg
 	app.slackClient = slackClient
 
-	// Initialize user cache
+	// Initialize caches
 	if teamID := slackClient.GetTeamID(); teamID != "" {
 		cacheDir, err := config.GetCacheDir()
 		if err != nil {
 			log.Printf("Warning: failed to get cache directory: %v", err)
 		} else {
+			// User cache
 			userCache, err := cache.NewUserCache(cacheDir, teamID, cache.DefaultTTL)
 			if err != nil {
 				log.Printf("Warning: failed to initialize user cache: %v", err)
 			} else {
 				app.userCache = userCache
+			}
+			// Channel cache
+			channelCache, err := cache.NewChannelCache(cacheDir, teamID, cache.DefaultChannelTTL)
+			if err != nil {
+				log.Printf("Warning: failed to initialize channel cache: %v", err)
+			} else {
+				app.channelCache = channelCache
 			}
 		}
 	}
@@ -149,9 +158,12 @@ func (a *App) Run() error {
 	model := shell.NewModel(a.slackClient, a.notificationManager, a.config.GetPromptConfig(), a.config.GetDisplayConfig(), a.config.GetStartupConfig(), a.config.AppToken != "")
 	a.model = model
 
-	// Set user cache if available
+	// Set caches if available
 	if a.userCache != nil {
 		model.SetUserCache(a.userCache)
+	}
+	if a.channelCache != nil {
+		model.SetChannelCache(a.channelCache)
 	}
 
 	// Set up realtime client if app token is available
@@ -195,10 +207,15 @@ func (a *App) Run() error {
 }
 
 func (a *App) Stop() {
-	// Save user cache
+	// Save caches
 	if a.userCache != nil {
 		if err := a.userCache.Save(); err != nil {
 			log.Printf("Warning: failed to save user cache: %v", err)
+		}
+	}
+	if a.channelCache != nil {
+		if err := a.channelCache.Save(); err != nil {
+			log.Printf("Warning: failed to save channel cache: %v", err)
 		}
 	}
 
@@ -221,7 +238,7 @@ func Logout() error {
 
 // RunCommand executes a command string and exits (non-interactive mode)
 func (a *App) RunCommand(commandStr string) error {
-	executor := shell.NewExecutorWithCache(a.slackClient, a.config.GetPromptConfig(), a.config.GetDisplayConfig(), a.config.AppToken != "", a.userCache)
+	executor := shell.NewExecutorWithCache(a.slackClient, a.config.GetPromptConfig(), a.config.GetDisplayConfig(), a.config.AppToken != "", a.userCache, a.channelCache)
 
 	// Split by && or ; for multiple commands
 	commands := splitCommands(commandStr)

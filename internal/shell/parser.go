@@ -26,6 +26,7 @@ const (
 	CmdLive
 	CmdSudo
 	CmdWhoami
+	CmdShow
 )
 
 // Pipeline represents a series of commands connected by pipes
@@ -127,6 +128,8 @@ func parseCommandType(s string) CommandType {
 		return CmdSudo
 	case "whoami":
 		return CmdWhoami
+	case "show":
+		return CmdShow
 	default:
 		return CmdUnknown
 	}

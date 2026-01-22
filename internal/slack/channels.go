@@ -282,3 +282,72 @@ func (c *Client) JoinChannel(channelID string) error {
 func (c *Client) LeaveChannel(channelID string) (bool, error) {
 	return c.api.LeaveConversation(channelID)
 }
+
+// ChannelInfo represents detailed channel information
+type ChannelInfo struct {
+	ID          string
+	Name        string
+	Topic       string
+	Purpose     string
+	Created     int64
+	Creator     string
+	IsPrivate   bool
+	IsArchived  bool
+	IsGeneral   bool
+	MemberCount int
+}
+
+// GetChannelInfo returns detailed information about a channel
+func (c *Client) GetChannelInfo(channelID string) (*ChannelInfo, error) {
+	conv, err := c.api.GetConversationInfo(&slack.GetConversationInfoInput{
+		ChannelID:         channelID,
+		IncludeNumMembers: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &ChannelInfo{
+		ID:          conv.ID,
+		Name:        conv.Name,
+		Topic:       conv.Topic.Value,
+		Purpose:     conv.Purpose.Value,
+		Created:     int64(conv.Created),
+		Creator:     conv.Creator,
+		IsPrivate:   conv.IsPrivate,
+		IsArchived:  conv.IsArchived,
+		IsGeneral:   conv.IsGeneral,
+		MemberCount: conv.NumMembers,
+	}, nil
+}
+
+// GetChannelMembers returns the list of member user IDs in a channel
+func (c *Client) GetChannelMembers(channelID string, limit int) ([]string, error) {
+	var allMembers []string
+
+	params := &slack.GetUsersInConversationParameters{
+		ChannelID: channelID,
+		Limit:     200,
+	}
+
+	for {
+		members, cursor, err := c.api.GetUsersInConversation(params)
+		if err != nil {
+			return nil, err
+		}
+
+		allMembers = append(allMembers, members...)
+
+		// Check if we've reached the limit
+		if limit > 0 && len(allMembers) >= limit {
+			return allMembers[:limit], nil
+		}
+
+		if cursor == "" {
+			break
+		}
+		params.Cursor = cursor
+	}
+
+	return allMembers, nil
+}
