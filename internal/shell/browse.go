@@ -400,13 +400,14 @@ func (m *BrowseModel) formatMessageLine(msg slack.Message, index int) string {
 	// Resolve mentions in text and convert emoji
 	text := ConvertEmoji(ResolveMentions(msg.Text, m.userCache))
 
-	// Truncate text if too long
+	// Truncate text if too long (use runes for proper multi-byte support)
 	maxLen := m.width - 30
 	if maxLen < 20 {
 		maxLen = 20
 	}
-	if len(text) > maxLen {
-		text = text[:maxLen-3] + "..."
+	textRunes := []rune(text)
+	if len(textRunes) > maxLen {
+		text = string(textRunes[:maxLen-3]) + "..."
 	}
 
 	// Replace newlines with spaces

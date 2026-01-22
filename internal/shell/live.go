@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -565,7 +566,7 @@ func (m *LiveModel) parseTimestamp(ts string) time.Time {
 	return time.Unix(sec, 0)
 }
 
-// wrapText wraps text to fit within the given width
+// wrapText wraps text to fit within the given width (in runes, not bytes)
 func (m *LiveModel) wrapText(text string, width int) []string {
 	if width <= 0 {
 		width = 80
@@ -581,22 +582,25 @@ func (m *LiveModel) wrapText(text string, width int) []string {
 			continue
 		}
 
+		// Convert to runes for proper multi-byte character handling
+		runes := []rune(para)
+
 		// Wrap each paragraph
-		for len(para) > width {
+		for len(runes) > width {
 			// Find a good break point
 			breakPoint := width
 			// Try to break at a space
 			for i := width; i > width/2; i-- {
-				if i < len(para) && para[i] == ' ' {
+				if i < len(runes) && runes[i] == ' ' {
 					breakPoint = i
 					break
 				}
 			}
-			lines = append(lines, para[:breakPoint])
-			para = strings.TrimLeft(para[breakPoint:], " ")
+			lines = append(lines, string(runes[:breakPoint]))
+			runes = []rune(strings.TrimLeft(string(runes[breakPoint:]), " "))
 		}
-		if para != "" {
-			lines = append(lines, para)
+		if len(runes) > 0 {
+			lines = append(lines, string(runes))
 		}
 	}
 
@@ -639,15 +643,16 @@ func (m *LiveModel) formatMessageLines(msg slack.Message, index int, truncate bo
 
 	// Header: [time] user:
 	header := fmt.Sprintf("[%s] %s: ", timeStr, userName)
-	headerLen := len(header)
+	headerLen := utf8.RuneCountInString(header)
 
 	if truncate {
 		maxLen := m.width - 30
 		if maxLen < 20 {
 			maxLen = 20
 		}
-		if len(text) > maxLen {
-			text = text[:maxLen-3] + "..."
+		textRunes := []rune(text)
+		if len(textRunes) > maxLen {
+			text = string(textRunes[:maxLen-3]) + "..."
 		}
 		text = strings.ReplaceAll(text, "\n", " ")
 		return []string{header + text + threadIndicator}

@@ -588,10 +588,11 @@ func (m *Model) renderNotifications() string {
 			prefix = fmt.Sprintf("#%s", n.ChannelName)
 		}
 
-		// Truncate message if too long
+		// Truncate message if too long (use runes for proper multi-byte support)
 		text := n.Text
-		if len(text) > 50 {
-			text = text[:47] + "..."
+		textRunes := []rune(text)
+		if len(textRunes) > 50 {
+			text = string(textRunes[:47]) + "..."
 		}
 
 		line := fmt.Sprintf("%s | %s: %s", prefix, n.UserName, text)
