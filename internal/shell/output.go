@@ -6,8 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kyokomi/emoji/v2"
 	"github.com/polidog/slack-shell/internal/slack"
 )
+
+// ConvertEmoji converts Slack emoji codes (e.g., :smile:) to Unicode emoji
+func ConvertEmoji(text string) string {
+	return emoji.Sprint(text)
+}
 
 // FormatChannelList formats a list of channels for display
 func FormatChannelList(channels []slack.Channel, dms []slack.Channel, userNames map[string]string) string {
@@ -93,8 +99,8 @@ func FormatMessages(messages []slack.Message, userNames map[string]string) strin
 			userName = "bot"
 		}
 
-		// Resolve mentions in text
-		text := ResolveMentions(msg.Text, userNames)
+		// Resolve mentions in text and convert emoji
+		text := ConvertEmoji(ResolveMentions(msg.Text, userNames))
 
 		// Format the message
 		sb.WriteString(fmt.Sprintf("[%s] %s: %s\n", timeStr, userName, text))
@@ -113,7 +119,8 @@ func FormatMessages(messages []slack.Message, userNames map[string]string) strin
 		if len(msg.Reactions) > 0 {
 			var reactions []string
 			for _, r := range msg.Reactions {
-				reactions = append(reactions, fmt.Sprintf(":%s: %d", r.Name, r.Count))
+				emojiStr := ConvertEmoji(fmt.Sprintf(":%s:", r.Name))
+				reactions = append(reactions, fmt.Sprintf("%s %d", emojiStr, r.Count))
 			}
 			sb.WriteString(fmt.Sprintf("        %s\n", strings.Join(reactions, " ")))
 		}

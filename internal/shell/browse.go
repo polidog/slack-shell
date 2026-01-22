@@ -397,8 +397,8 @@ func (m *BrowseModel) formatMessageLine(msg slack.Message, index int) string {
 		threadIndicator = fmt.Sprintf(" [%d replies]", msg.ReplyCount)
 	}
 
-	// Resolve mentions in text
-	text := ResolveMentions(msg.Text, m.userCache)
+	// Resolve mentions in text and convert emoji
+	text := ConvertEmoji(ResolveMentions(msg.Text, m.userCache))
 
 	// Truncate text if too long
 	maxLen := m.width - 30

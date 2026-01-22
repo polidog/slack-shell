@@ -385,10 +385,31 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 
 func (m *LiveModel) ensureVisible() {
 	visibleLines := m.getVisibleLines()
+
+	// If selected message is above the scroll offset, scroll up
 	if m.selectedIndex < m.scrollOffset {
 		m.scrollOffset = m.selectedIndex
-	} else if m.selectedIndex >= m.scrollOffset+visibleLines {
-		m.scrollOffset = m.selectedIndex - visibleLines + 1
+		return
+	}
+
+	// Calculate how many lines are used from scrollOffset to selectedIndex (inclusive)
+	linesUsed := m.getTotalLinesInRange(m.scrollOffset, m.selectedIndex+1)
+
+	// If selected message doesn't fit, scroll down
+	if linesUsed > visibleLines {
+		// Find new scrollOffset that shows the selected message
+		m.scrollOffset = m.selectedIndex
+		// Try to show more context by scrolling back if possible
+		linesNeeded := m.getMessageLineCount(m.selectedIndex)
+		for m.scrollOffset > 0 && linesNeeded < visibleLines {
+			prevLines := m.getMessageLineCount(m.scrollOffset - 1)
+			if linesNeeded+prevLines <= visibleLines {
+				m.scrollOffset--
+				linesNeeded += prevLines
+			} else {
+				break
+			}
+		}
 	}
 }
 
@@ -466,31 +487,41 @@ func (m *LiveModel) renderMessageList() string {
 	}
 
 	visibleLines := m.getVisibleLines()
-	endIdx := m.scrollOffset + visibleLines
-	if endIdx > len(m.messages) {
-		endIdx = len(m.messages)
-	}
+	truncate := m.displayConfig.LiveTruncateMessages
 
-	for i := m.scrollOffset; i < endIdx; i++ {
+	// Render messages starting from scrollOffset, counting lines
+	linesRendered := 0
+	endIdx := m.scrollOffset
+
+	for i := m.scrollOffset; i < len(m.messages) && linesRendered < visibleLines; i++ {
 		msg := m.messages[i]
-		line := m.formatMessageLine(msg, i)
+		lines := m.formatMessageLines(msg, i, truncate)
 
-		if i == m.selectedIndex {
-			sb.WriteString(liveSelectedStyle.Render(line))
-		} else {
-			sb.WriteString(liveNormalStyle.Render(line))
+		for _, line := range lines {
+			if linesRendered >= visibleLines {
+				break
+			}
+
+			if i == m.selectedIndex {
+				sb.WriteString(liveSelectedStyle.Render(line))
+			} else {
+				sb.WriteString(liveNormalStyle.Render(line))
+			}
+			sb.WriteString("\n")
+			linesRendered++
 		}
-		sb.WriteString("\n")
+		endIdx = i + 1
 	}
 
 	// Scroll indicator
-	if len(m.messages) > visibleLines {
+	totalMessages := len(m.messages)
+	if totalMessages > 0 {
 		moreIndicator := ""
 		if m.hasMoreMessages {
 			moreIndicator = " (↑ for more)"
 		}
 		sb.WriteString(fmt.Sprintf("\n[%d-%d of %d messages]%s",
-			m.scrollOffset+1, endIdx, len(m.messages), moreIndicator))
+			m.scrollOffset+1, endIdx, totalMessages, moreIndicator))
 	}
 
 	return sb.String()
@@ -506,21 +537,78 @@ func (m *LiveModel) renderThread() string {
 
 	sb.WriteString("\n")
 	for i, msg := range m.threadMessages {
-		line := m.formatMessageLine(msg, i)
-		if i == 0 {
-			// Parent message
-			sb.WriteString(liveNormalStyle.Render(line))
-		} else {
-			// Thread replies
-			sb.WriteString(liveThreadStyle.Render("  " + line))
+		// Thread view always shows full text (no truncation)
+		lines := m.formatMessageLines(msg, i, false)
+		for _, line := range lines {
+			if i == 0 {
+				// Parent message
+				sb.WriteString(liveNormalStyle.Render(line))
+			} else {
+				// Thread replies
+				sb.WriteString(liveThreadStyle.Render("  " + line))
+			}
+			sb.WriteString("\n")
 		}
-		sb.WriteString("\n")
 	}
 
 	return sb.String()
 }
 
-func (m *LiveModel) formatMessageLine(msg slack.Message, index int) string {
+func (m *LiveModel) parseTimestamp(ts string) time.Time {
+	var sec int64
+	for i := 0; i < len(ts); i++ {
+		if ts[i] == '.' {
+			break
+		}
+		sec = sec*10 + int64(ts[i]-'0')
+	}
+	return time.Unix(sec, 0)
+}
+
+// wrapText wraps text to fit within the given width
+func (m *LiveModel) wrapText(text string, width int) []string {
+	if width <= 0 {
+		width = 80
+	}
+
+	var lines []string
+	// Split by existing newlines first
+	paragraphs := strings.Split(text, "\n")
+
+	for _, para := range paragraphs {
+		if para == "" {
+			lines = append(lines, "")
+			continue
+		}
+
+		// Wrap each paragraph
+		for len(para) > width {
+			// Find a good break point
+			breakPoint := width
+			// Try to break at a space
+			for i := width; i > width/2; i-- {
+				if i < len(para) && para[i] == ' ' {
+					breakPoint = i
+					break
+				}
+			}
+			lines = append(lines, para[:breakPoint])
+			para = strings.TrimLeft(para[breakPoint:], " ")
+		}
+		if para != "" {
+			lines = append(lines, para)
+		}
+	}
+
+	if len(lines) == 0 {
+		lines = append(lines, "")
+	}
+
+	return lines
+}
+
+// formatMessageLines formats a message and returns multiple lines if needed
+func (m *LiveModel) formatMessageLines(msg slack.Message, index int, truncate bool) []string {
 	// Get user name
 	userName := msg.UserName
 	if userName == "" {
@@ -546,33 +634,73 @@ func (m *LiveModel) formatMessageLine(msg slack.Message, index int) string {
 		threadIndicator = fmt.Sprintf(" [%d replies]", msg.ReplyCount)
 	}
 
-	// Resolve mentions in text
-	text := ResolveMentions(msg.Text, m.userCache)
+	// Resolve mentions in text and convert emoji
+	text := ConvertEmoji(ResolveMentions(msg.Text, m.userCache))
 
-	// Truncate text if too long
-	maxLen := m.width - 30
-	if maxLen < 20 {
-		maxLen = 20
+	// Header: [time] user:
+	header := fmt.Sprintf("[%s] %s: ", timeStr, userName)
+	headerLen := len(header)
+
+	if truncate {
+		maxLen := m.width - 30
+		if maxLen < 20 {
+			maxLen = 20
+		}
+		if len(text) > maxLen {
+			text = text[:maxLen-3] + "..."
+		}
+		text = strings.ReplaceAll(text, "\n", " ")
+		return []string{header + text + threadIndicator}
 	}
-	if len(text) > maxLen {
-		text = text[:maxLen-3] + "..."
+
+	// Multi-line mode: wrap text
+	availableWidth := m.width - headerLen - 2
+	if availableWidth < 20 {
+		availableWidth = 20
 	}
 
-	// Replace newlines with spaces
-	text = strings.ReplaceAll(text, "\n", " ")
+	wrappedLines := m.wrapText(text, availableWidth)
 
-	return fmt.Sprintf("[%s] %s: %s%s", timeStr, userName, text, threadIndicator)
+	var result []string
+	for i, line := range wrappedLines {
+		if i == 0 {
+			// First line includes header
+			if len(wrappedLines) == 1 {
+				result = append(result, header+line+threadIndicator)
+			} else {
+				result = append(result, header+line)
+			}
+		} else {
+			// Continuation lines are indented
+			indent := strings.Repeat(" ", headerLen)
+			if i == len(wrappedLines)-1 {
+				result = append(result, indent+line+threadIndicator)
+			} else {
+				result = append(result, indent+line)
+			}
+		}
+	}
+
+	return result
 }
 
-func (m *LiveModel) parseTimestamp(ts string) time.Time {
-	var sec int64
-	for i := 0; i < len(ts); i++ {
-		if ts[i] == '.' {
-			break
-		}
-		sec = sec*10 + int64(ts[i]-'0')
+// getMessageLineCount returns the number of lines a message will take
+func (m *LiveModel) getMessageLineCount(msgIndex int) int {
+	if msgIndex < 0 || msgIndex >= len(m.messages) {
+		return 1
 	}
-	return time.Unix(sec, 0)
+	truncate := m.displayConfig.LiveTruncateMessages
+	lines := m.formatMessageLines(m.messages[msgIndex], msgIndex, truncate)
+	return len(lines)
+}
+
+// getTotalLinesUpToIndex returns total lines for messages from startIdx to endIdx (exclusive)
+func (m *LiveModel) getTotalLinesInRange(startIdx, endIdx int) int {
+	total := 0
+	for i := startIdx; i < endIdx && i < len(m.messages); i++ {
+		total += m.getMessageLineCount(i)
+	}
+	return total
 }
 
 func (m *LiveModel) renderHelp() string {

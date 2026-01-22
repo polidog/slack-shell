@@ -48,6 +48,10 @@ type DisplayConfig struct {
 	// Options: "display_name", "real_name", "username"
 	// Default: "display_name"
 	NameFormat string `yaml:"name_format"`
+
+	// LiveTruncateMessages controls whether messages are truncated in live mode
+	// Default: false (show full messages)
+	LiveTruncateMessages bool `yaml:"live_truncate_messages"`
 }
 
 // PromptConfig defines prompt customization settings
@@ -457,6 +461,11 @@ display:
   #   "real_name"    - Real name (falls back to display name, then username)
   #   "username"     - Username only
   name_format: "display_name"
+
+  # Whether to truncate long messages in live mode
+  # Default: false (show full messages)
+  # Note: Thread view always shows full messages regardless of this setting
+  live_truncate_messages: false
 
 # ============================================================
 # Keybindings (Vim-like defaults)
