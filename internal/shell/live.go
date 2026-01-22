@@ -70,6 +70,9 @@ type LiveModel struct {
 
 	// Pagination
 	hasMoreMessages bool
+
+	// Delete confirmation
+	deleteConfirm bool
 }
 
 // NewLiveModel creates a new LiveModel
@@ -129,6 +132,12 @@ type LiveOlderMessagesLoadedMsg struct {
 	Messages []slack.Message
 	HasMore  bool
 	Err      error
+}
+
+// LiveMessageDeletedMsg is sent when a message is deleted
+type LiveMessageDeletedMsg struct {
+	Timestamp string
+	Err       error
 }
 
 func (m *LiveModel) loadMessages() tea.Cmd {
@@ -203,6 +212,13 @@ func (m *LiveModel) sendReply(threadTS, text string) tea.Cmd {
 	}
 }
 
+func (m *LiveModel) deleteMessage(timestamp string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.client.DeleteMessage(m.channelID, timestamp)
+		return LiveMessageDeletedMsg{Timestamp: timestamp, Err: err}
+	}
+}
+
 // Update handles messages
 func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 	var cmd tea.Cmd
@@ -262,6 +278,24 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 		} else {
 			// Reload thread to show the new reply
 			return m, m.loadThread(m.threadTS)
+		}
+		return m, nil
+
+	case LiveMessageDeletedMsg:
+		if msg.Err != nil {
+			m.loadingErr = msg.Err
+		} else {
+			// Remove the deleted message from the list
+			for i, message := range m.messages {
+				if message.Timestamp == msg.Timestamp {
+					m.messages = append(m.messages[:i], m.messages[i+1:]...)
+					// Adjust selected index if necessary
+					if m.selectedIndex >= len(m.messages) && m.selectedIndex > 0 {
+						m.selectedIndex--
+					}
+					break
+				}
+			}
 		}
 		return m, nil
 
@@ -338,6 +372,23 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 				m.inputText, cmd = m.inputText.Update(msg)
 				return m, cmd
 			}
+		}
+
+		// Handle delete confirmation
+		if m.deleteConfirm {
+			switch msg.String() {
+			case "y", "Y":
+				m.deleteConfirm = false
+				if len(m.messages) > 0 && m.selectedIndex < len(m.messages) {
+					selectedMsg := m.messages[m.selectedIndex]
+					return m, m.deleteMessage(selectedMsg.Timestamp)
+				}
+				return m, nil
+			case "n", "N", "esc":
+				m.deleteConfirm = false
+				return m, nil
+			}
+			return m, nil
 		}
 
 		// Handle thread view
@@ -419,6 +470,16 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 			m.loading = true
 			m.loadingErr = nil
 			return m, m.loadMessages()
+		case "d":
+			// Delete selected message (show confirmation)
+			if len(m.messages) > 0 && m.selectedIndex < len(m.messages) {
+				selectedMsg := m.messages[m.selectedIndex]
+				// Only allow deleting own messages
+				if selectedMsg.User == m.client.GetUserID() {
+					m.deleteConfirm = true
+				}
+			}
+			return m, nil
 		}
 	}
 
@@ -511,6 +572,13 @@ func (m *LiveModel) View() string {
 			sb.WriteString("Reply: ")
 		}
 		sb.WriteString(m.inputText.View())
+		sb.WriteString("\n")
+	}
+
+	// Delete confirmation
+	if m.deleteConfirm {
+		sb.WriteString("\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true).Render("Delete this message? (y/n)"))
 		sb.WriteString("\n")
 	}
 
@@ -751,7 +819,9 @@ func (m *LiveModel) getTotalLinesInRange(startIdx, endIdx int) int {
 
 func (m *LiveModel) renderHelp() string {
 	var help string
-	if m.inputMode != InputModeNone {
+	if m.deleteConfirm {
+		help = "y: confirm delete | n/Esc: cancel"
+	} else if m.inputMode != InputModeNone {
 		sendKey := m.displayConfig.LiveSendKey
 		if sendKey == "" {
 			sendKey = "enter"
@@ -764,7 +834,7 @@ func (m *LiveModel) renderHelp() string {
 	} else if m.threadVisible {
 		help = "r: reply | q/Esc: back | j/k: scroll"
 	} else {
-		help = "i: new message | Enter: view thread | r: reply | R: reload | j/k/arrows: navigate | q: exit"
+		help = "i: new message | Enter: thread | r: reply | d: delete | R: reload | j/k: nav | q: exit"
 	}
 	return "\n" + liveHelpStyle.Render(help)
 }
@@ -809,8 +879,8 @@ func (m *LiveModel) GetChannelID() string {
 
 // ShouldExit returns true if the user wants to exit live mode
 func (m *LiveModel) ShouldExit(msg tea.KeyMsg) bool {
-	// Only exit on 'q' when not in input mode and not in thread view
-	if m.inputMode != InputModeNone || m.threadVisible {
+	// Only exit on 'q' when not in input mode, not in thread view, and not confirming delete
+	if m.inputMode != InputModeNone || m.threadVisible || m.deleteConfirm {
 		return false
 	}
 	return msg.String() == "q"
@@ -824,4 +894,9 @@ func (m *LiveModel) IsInInputMode() bool {
 // IsThreadVisible returns true if thread view is visible
 func (m *LiveModel) IsThreadVisible() bool {
 	return m.threadVisible
+}
+
+// IsDeleteConfirm returns true if delete confirmation is shown
+func (m *LiveModel) IsDeleteConfirm() bool {
+	return m.deleteConfirm
 }

@@ -129,6 +129,12 @@ func (c *Client) PostThreadReply(channelID, threadTS, text string) (string, erro
 	return ts, err
 }
 
+// DeleteMessage deletes a message from a channel
+func (c *Client) DeleteMessage(channelID, timestamp string) error {
+	_, _, err := c.api.DeleteMessage(channelID, timestamp)
+	return err
+}
+
 func ParseTimestamp(ts string) time.Time {
 	// Slack timestamps are in format "1234567890.123456"
 	var sec, nsec int64
