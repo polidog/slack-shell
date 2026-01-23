@@ -227,7 +227,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	// Handle live mode messages
-	case LiveMessagesLoadedMsg, LiveThreadLoadedMsg, LiveMessageSentMsg, LiveReplySentMsg, LiveOlderMessagesLoadedMsg:
+	case LiveMessagesLoadedMsg, LiveThreadLoadedMsg, LiveMessageSentMsg, LiveReplySentMsg, LiveOlderMessagesLoadedMsg, LiveMembersLoadedMsg:
 		if m.liveMode && m.liveModel != nil {
 			m.liveModel, cmd = m.liveModel.Update(msg)
 			return m, cmd

@@ -119,7 +119,8 @@ func NewLiveModel(client *slack.Client, channelID, channelName string, userCache
 
 // Init initializes the live model
 func (m *LiveModel) Init() tea.Cmd {
-	return m.loadMessages()
+	// Load messages and channel members in parallel
+	return tea.Batch(m.loadMessages(), m.loadChannelMembers())
 }
 
 // LiveMessagesLoadedMsg is sent when messages are loaded in live mode
@@ -253,8 +254,9 @@ func (m *LiveModel) editMessage(timestamp, text string) tea.Cmd {
 
 // LiveMembersLoadedMsg is sent when channel members are loaded
 type LiveMembersLoadedMsg struct {
-	Members []string
-	Err     error
+	Members   []string
+	UserNames map[string]string // userID -> userName
+	Err       error
 }
 
 func (m *LiveModel) loadChannelMembers() tea.Cmd {
@@ -263,17 +265,34 @@ func (m *LiveModel) loadChannelMembers() tea.Cmd {
 		if err != nil {
 			return LiveMembersLoadedMsg{Members: nil, Err: err}
 		}
-		// Pre-fetch user info for members not in cache
+		// Fetch user info for members not in cache
+		userNames := make(map[string]string)
+		// Copy existing cache
+		for k, v := range m.userCache {
+			userNames[k] = v
+		}
+		// Find uncached users
 		var uncached []string
 		for _, userID := range members {
-			if _, ok := m.userCache[userID]; !ok {
+			if _, ok := userNames[userID]; !ok {
 				uncached = append(uncached, userID)
 			}
 		}
+		// Fetch uncached users
 		if len(uncached) > 0 {
-			m.resolveUserIDs(uncached)
+			users, err := m.client.GetUsersInfo(uncached)
+			if err == nil && users != nil {
+				for _, u := range *users {
+					entry := cache.CachedUser{
+						Name:        u.Name,
+						DisplayName: u.Profile.DisplayName,
+						RealName:    u.RealName,
+					}
+					userNames[u.ID] = entry.GetPreferredName(m.displayConfig.NameFormat)
+				}
+			}
 		}
-		return LiveMembersLoadedMsg{Members: members, Err: nil}
+		return LiveMembersLoadedMsg{Members: members, UserNames: userNames, Err: nil}
 	}
 }
 
@@ -483,9 +502,19 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 		return m, nil
 
 	case LiveMembersLoadedMsg:
-		if msg.Err == nil {
+		if msg.Err != nil {
+			m.loadingErr = msg.Err
+		} else {
 			m.channelMembers = msg.Members
+			// Merge user names into cache
+			for k, v := range msg.UserNames {
+				m.userCache[k] = v
+			}
 			m.membersLoaded = true
+			// Update mention completion now that members are loaded
+			if m.inputMode != InputModeNone {
+				m.updateMentionCompletion()
+			}
 		}
 		return m, nil
 
