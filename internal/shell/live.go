@@ -77,6 +77,20 @@ type LiveModel struct {
 
 	// Edit mode
 	editTS string
+
+	// Mention completion
+	mentionActive     bool
+	mentionCandidates []mentionCandidate
+	mentionIndex      int
+	mentionPrefix     string // The text after @ being completed
+	channelMembers    []string
+	membersLoaded     bool
+}
+
+// mentionCandidate represents a user mention candidate
+type mentionCandidate struct {
+	UserID   string
+	UserName string
 }
 
 // NewLiveModel creates a new LiveModel
@@ -237,6 +251,143 @@ func (m *LiveModel) editMessage(timestamp, text string) tea.Cmd {
 	}
 }
 
+// LiveMembersLoadedMsg is sent when channel members are loaded
+type LiveMembersLoadedMsg struct {
+	Members []string
+	Err     error
+}
+
+func (m *LiveModel) loadChannelMembers() tea.Cmd {
+	return func() tea.Msg {
+		members, err := m.client.GetChannelMembers(m.channelID, 100)
+		if err != nil {
+			return LiveMembersLoadedMsg{Members: nil, Err: err}
+		}
+		// Pre-fetch user info for members not in cache
+		var uncached []string
+		for _, userID := range members {
+			if _, ok := m.userCache[userID]; !ok {
+				uncached = append(uncached, userID)
+			}
+		}
+		if len(uncached) > 0 {
+			m.resolveUserIDs(uncached)
+		}
+		return LiveMembersLoadedMsg{Members: members, Err: nil}
+	}
+}
+
+// resolveUserIDs fetches and caches user info for the given user IDs
+func (m *LiveModel) resolveUserIDs(userIDs []string) {
+	users, err := m.client.GetUsersInfo(userIDs)
+	if err != nil || users == nil {
+		return
+	}
+	for _, u := range *users {
+		entry := cache.CachedUser{
+			Name:        u.Name,
+			DisplayName: u.Profile.DisplayName,
+			RealName:    u.RealName,
+		}
+		m.userCache[u.ID] = entry.GetPreferredName(m.displayConfig.NameFormat)
+	}
+}
+
+// updateMentionCompletion checks the current input and updates mention completion state
+func (m *LiveModel) updateMentionCompletion() {
+	text := m.inputText.Value()
+
+	// Find the last @ that starts a mention (followed by word characters, not complete)
+	mentionStart := -1
+	runes := []rune(text)
+	for i := len(runes) - 1; i >= 0; i-- {
+		r := runes[i]
+		if r == '@' {
+			mentionStart = i
+			break
+		}
+		// Stop if we hit whitespace (mention is complete or no mention)
+		if r == ' ' || r == '\n' || r == '\t' {
+			break
+		}
+	}
+
+	if mentionStart == -1 {
+		m.mentionActive = false
+		m.mentionCandidates = nil
+		return
+	}
+
+	// Extract the prefix after @
+	prefix := ""
+	if mentionStart+1 < len(runes) {
+		prefix = string(runes[mentionStart+1:])
+	}
+	m.mentionPrefix = strings.ToLower(prefix)
+
+	// Build candidates from channel members
+	m.mentionCandidates = nil
+	for _, userID := range m.channelMembers {
+		userName, ok := m.userCache[userID]
+		if !ok {
+			continue
+		}
+		// Filter by prefix
+		if m.mentionPrefix == "" || strings.HasPrefix(strings.ToLower(userName), m.mentionPrefix) {
+			m.mentionCandidates = append(m.mentionCandidates, mentionCandidate{
+				UserID:   userID,
+				UserName: userName,
+			})
+		}
+		// Limit to 10 candidates
+		if len(m.mentionCandidates) >= 10 {
+			break
+		}
+	}
+
+	m.mentionActive = len(m.mentionCandidates) > 0
+	if m.mentionActive && m.mentionIndex >= len(m.mentionCandidates) {
+		m.mentionIndex = 0
+	}
+}
+
+// completeMention inserts the selected mention candidate
+func (m *LiveModel) completeMention() {
+	if !m.mentionActive || len(m.mentionCandidates) == 0 {
+		return
+	}
+
+	candidate := m.mentionCandidates[m.mentionIndex]
+	text := m.inputText.Value()
+	runes := []rune(text)
+
+	// Find the last @ that starts a mention
+	mentionStart := -1
+	for i := len(runes) - 1; i >= 0; i-- {
+		if runes[i] == '@' {
+			mentionStart = i
+			break
+		}
+		if runes[i] == ' ' || runes[i] == '\n' || runes[i] == '\t' {
+			break
+		}
+	}
+
+	if mentionStart == -1 {
+		return
+	}
+
+	// Replace @prefix with @username
+	newText := string(runes[:mentionStart]) + "@" + candidate.UserName + " "
+
+	m.inputText.SetValue(newText)
+	// Move cursor to end
+	m.inputText.CursorEnd()
+
+	m.mentionActive = false
+	m.mentionCandidates = nil
+}
+
 // Update handles messages
 func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 	var cmd tea.Cmd
@@ -331,6 +482,13 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 		}
 		return m, nil
 
+	case LiveMembersLoadedMsg:
+		if msg.Err == nil {
+			m.channelMembers = msg.Members
+			m.membersLoaded = true
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -346,10 +504,49 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 				sendKey = "enter"
 			}
 
+			// Handle mention completion keys first
+			if m.mentionActive {
+				switch msg.Type {
+				case tea.KeyTab:
+					m.completeMention()
+					return m, nil
+				case tea.KeyUp:
+					if m.mentionIndex > 0 {
+						m.mentionIndex--
+					} else {
+						m.mentionIndex = len(m.mentionCandidates) - 1
+					}
+					return m, nil
+				case tea.KeyDown:
+					if m.mentionIndex < len(m.mentionCandidates)-1 {
+						m.mentionIndex++
+					} else {
+						m.mentionIndex = 0
+					}
+					return m, nil
+				case tea.KeyEsc:
+					m.mentionActive = false
+					m.mentionCandidates = nil
+					return m, nil
+				}
+			}
+
 			switch msg.Type {
+			case tea.KeyTab:
+				// Start or update mention completion when Tab is pressed
+				if !m.membersLoaded {
+					return m, m.loadChannelMembers()
+				}
+				m.updateMentionCompletion()
+				if m.mentionActive {
+					m.completeMention()
+				}
+				return m, nil
 			case tea.KeyEsc:
 				m.inputMode = InputModeNone
 				m.editTS = ""
+				m.mentionActive = false
+				m.mentionCandidates = nil
 				m.inputText.Blur()
 				m.inputText.Reset()
 				return m, nil
@@ -411,6 +608,16 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 					return m, nil
 				}
 				m.inputText, cmd = m.inputText.Update(msg)
+				// Update mention completion after text changes
+				if m.membersLoaded {
+					m.updateMentionCompletion()
+				} else {
+					// Check if @ was typed and load members
+					text := m.inputText.Value()
+					if strings.Contains(text, "@") {
+						return m, m.loadChannelMembers()
+					}
+				}
 				return m, cmd
 			}
 		}
@@ -632,6 +839,11 @@ func (m *LiveModel) View() string {
 		}
 		sb.WriteString(m.inputText.View())
 		sb.WriteString("\n")
+
+		// Show mention completion candidates
+		if m.mentionActive && len(m.mentionCandidates) > 0 {
+			sb.WriteString(m.renderMentionCandidates())
+		}
 	}
 
 	// Delete confirmation
@@ -874,6 +1086,26 @@ func (m *LiveModel) getTotalLinesInRange(startIdx, endIdx int) int {
 		total += m.getMessageLineCount(i)
 	}
 	return total
+}
+
+func (m *LiveModel) renderMentionCandidates() string {
+	var sb strings.Builder
+	sb.WriteString(liveHelpStyle.Render("Mention: "))
+	for i, c := range m.mentionCandidates {
+		name := "@" + c.UserName
+		if i == m.mentionIndex {
+			sb.WriteString(liveSelectedStyle.Render(name))
+		} else {
+			sb.WriteString(liveNormalStyle.Render(name))
+		}
+		if i < len(m.mentionCandidates)-1 {
+			sb.WriteString(" ")
+		}
+	}
+	sb.WriteString("\n")
+	sb.WriteString(liveHelpStyle.Render("Tab: complete | ↑↓: select | Esc: cancel"))
+	sb.WriteString("\n")
+	return sb.String()
 }
 
 func (m *LiveModel) renderHelp() string {
