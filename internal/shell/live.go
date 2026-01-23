@@ -39,6 +39,7 @@ const (
 	InputModeNone InputMode = iota
 	InputModeNewMessage
 	InputModeReply
+	InputModeEdit
 )
 
 // LiveModel represents the live mode UI with real-time updates and message sending
@@ -73,6 +74,9 @@ type LiveModel struct {
 
 	// Delete confirmation
 	deleteConfirm bool
+
+	// Edit mode
+	editTS string
 }
 
 // NewLiveModel creates a new LiveModel
@@ -137,6 +141,13 @@ type LiveOlderMessagesLoadedMsg struct {
 // LiveMessageDeletedMsg is sent when a message is deleted
 type LiveMessageDeletedMsg struct {
 	Timestamp string
+	Err       error
+}
+
+// LiveMessageEditedMsg is sent when a message is edited
+type LiveMessageEditedMsg struct {
+	Timestamp string
+	NewText   string
 	Err       error
 }
 
@@ -216,6 +227,13 @@ func (m *LiveModel) deleteMessage(timestamp string) tea.Cmd {
 	return func() tea.Msg {
 		err := m.client.DeleteMessage(m.channelID, timestamp)
 		return LiveMessageDeletedMsg{Timestamp: timestamp, Err: err}
+	}
+}
+
+func (m *LiveModel) editMessage(timestamp, text string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.client.UpdateMessage(m.channelID, timestamp, text)
+		return LiveMessageEditedMsg{Timestamp: timestamp, NewText: text, Err: err}
 	}
 }
 
@@ -299,6 +317,20 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 		}
 		return m, nil
 
+	case LiveMessageEditedMsg:
+		if msg.Err != nil {
+			m.loadingErr = msg.Err
+		} else {
+			// Update the message text in the list
+			for i, message := range m.messages {
+				if message.Timestamp == msg.Timestamp {
+					m.messages[i].Text = msg.NewText
+					break
+				}
+			}
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -317,6 +349,7 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 			switch msg.Type {
 			case tea.KeyEsc:
 				m.inputMode = InputModeNone
+				m.editTS = ""
 				m.inputText.Blur()
 				m.inputText.Reset()
 				return m, nil
@@ -328,7 +361,9 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 					text := strings.TrimSpace(m.inputText.Value())
 					if text != "" {
 						currentMode := m.inputMode
+						editTS := m.editTS
 						m.inputMode = InputModeNone
+						m.editTS = ""
 						m.inputText.Blur()
 						m.inputText.Reset()
 
@@ -336,6 +371,8 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 							return m, m.sendMessage(text)
 						} else if currentMode == InputModeReply {
 							return m, m.sendReply(m.threadTS, text)
+						} else if currentMode == InputModeEdit {
+							return m, m.editMessage(editTS, text)
 						}
 					}
 					return m, nil
@@ -348,7 +385,9 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 					text := strings.TrimSpace(m.inputText.Value())
 					if text != "" {
 						currentMode := m.inputMode
+						editTS := m.editTS
 						m.inputMode = InputModeNone
+						m.editTS = ""
 						m.inputText.Blur()
 						m.inputText.Reset()
 
@@ -356,6 +395,8 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 							return m, m.sendMessage(text)
 						} else if currentMode == InputModeReply {
 							return m, m.sendReply(m.threadTS, text)
+						} else if currentMode == InputModeEdit {
+							return m, m.editMessage(editTS, text)
 						}
 					}
 					return m, nil
@@ -480,6 +521,21 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 				}
 			}
 			return m, nil
+		case "e":
+			// Edit selected message
+			if len(m.messages) > 0 && m.selectedIndex < len(m.messages) {
+				selectedMsg := m.messages[m.selectedIndex]
+				// Only allow editing own messages
+				if selectedMsg.User == m.client.GetUserID() {
+					m.editTS = selectedMsg.Timestamp
+					m.inputMode = InputModeEdit
+					m.inputText.Placeholder = "Edit message..."
+					m.inputText.SetValue(selectedMsg.Text)
+					m.inputText.Focus()
+					return m, textarea.Blink
+				}
+			}
+			return m, nil
 		}
 	}
 
@@ -566,10 +622,13 @@ func (m *LiveModel) View() string {
 	// Input mode
 	if m.inputMode != InputModeNone {
 		sb.WriteString("\n")
-		if m.inputMode == InputModeNewMessage {
+		switch m.inputMode {
+		case InputModeNewMessage:
 			sb.WriteString("Message: ")
-		} else {
+		case InputModeReply:
 			sb.WriteString("Reply: ")
+		case InputModeEdit:
+			sb.WriteString("Edit: ")
 		}
 		sb.WriteString(m.inputText.View())
 		sb.WriteString("\n")
@@ -834,7 +893,7 @@ func (m *LiveModel) renderHelp() string {
 	} else if m.threadVisible {
 		help = "r: reply | q/Esc: back | j/k: scroll"
 	} else {
-		help = "i: new message | Enter: thread | r: reply | d: delete | R: reload | j/k: nav | q: exit"
+		help = "i: new message | Enter: thread | r: reply | e: edit | d: delete | R: reload | j/k: nav | q: exit"
 	}
 	return "\n" + liveHelpStyle.Render(help)
 }

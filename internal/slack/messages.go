@@ -135,6 +135,12 @@ func (c *Client) DeleteMessage(channelID, timestamp string) error {
 	return err
 }
 
+// UpdateMessage updates an existing message
+func (c *Client) UpdateMessage(channelID, timestamp, text string) error {
+	_, _, _, err := c.api.UpdateMessage(channelID, timestamp, slack.MsgOptionText(text, false))
+	return err
+}
+
 func ParseTimestamp(ts string) time.Time {
 	// Slack timestamps are in format "1234567890.123456"
 	var sec, nsec int64
