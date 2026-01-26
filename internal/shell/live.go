@@ -30,6 +30,16 @@ var (
 			Foreground(lipgloss.Color("8"))
 	liveNewMsgStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("2"))
+	liveNotifyBarStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("15")).
+				Background(lipgloss.Color("8"))
+	liveNotifyPanelStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("6")).
+				Padding(0, 1)
+	livePeekHeaderStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("5")).
+				Bold(true)
 )
 
 // InputMode represents the type of input in live mode
@@ -85,12 +95,46 @@ type LiveModel struct {
 	mentionPrefix     string // The text after @ being completed
 	channelMembers    []string
 	membersLoaded     bool
+
+	// Notification display
+	notifications     []NotificationItem
+	showNotifyPanel   bool
+	notifyPanelIndex  int
+
+	// Peek mode (read-only view of another channel)
+	peekMode            bool
+	peekChannelID       string
+	peekChannelName     string
+	peekIsIM            bool
+	peekMessages        []slack.Message
+	peekSelectedIndex   int
+	peekScrollOffset    int
+	peekThreadVisible   bool
+	peekThreadMessages  []slack.Message
+	peekThreadTS        string
+	peekLoading         bool
+	peekLoadingErr      error
+	originalChannelID   string
+	originalChannelName string
+	originalMessages    []slack.Message
+	originalScrollOffset int
+	originalSelectedIndex int
 }
 
 // mentionCandidate represents a user mention candidate
 type mentionCandidate struct {
 	UserID   string
 	UserName string
+}
+
+// NotificationItem represents a notification from another channel
+type NotificationItem struct {
+	ChannelID   string
+	ChannelName string
+	IsIM        bool
+	Count       int
+	LastMessage string
+	LastUser    string
 }
 
 // NewLiveModel creates a new LiveModel
@@ -518,6 +562,30 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 		}
 		return m, nil
 
+	case PeekMessagesLoadedMsg:
+		m.peekLoading = false
+		if msg.Err != nil {
+			m.peekLoadingErr = msg.Err
+		} else {
+			m.peekMessages = msg.Messages
+			// Select the last (newest) message by default
+			if len(m.peekMessages) > 0 {
+				m.peekSelectedIndex = len(m.peekMessages) - 1
+				m.ensurePeekVisible()
+			}
+		}
+		return m, nil
+
+	case PeekThreadLoadedMsg:
+		if msg.Err != nil {
+			m.peekLoadingErr = msg.Err
+			m.peekThreadVisible = false
+		} else {
+			m.peekThreadMessages = msg.Messages
+			m.peekThreadVisible = true
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -525,6 +593,16 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// Handle peek mode
+		if m.peekMode {
+			return m.handlePeekModeKey(msg)
+		}
+
+		// Handle notification panel
+		if m.showNotifyPanel {
+			return m.handleNotifyPanelKey(msg)
+		}
+
 		// Handle input mode
 		if m.inputMode != InputModeNone {
 			// Get send key setting (default to "enter")
@@ -772,9 +850,99 @@ func (m *LiveModel) Update(msg tea.Msg) (*LiveModel, tea.Cmd) {
 				}
 			}
 			return m, nil
+		case "n":
+			// Toggle notification panel
+			if len(m.notifications) > 0 {
+				m.showNotifyPanel = true
+				m.notifyPanelIndex = 0
+			}
+			return m, nil
 		}
 	}
 
+	return m, nil
+}
+
+// handlePeekModeKey handles key events in peek mode
+func (m *LiveModel) handlePeekModeKey(msg tea.KeyMsg) (*LiveModel, tea.Cmd) {
+	// Handle peek thread view
+	if m.peekThreadVisible {
+		switch msg.String() {
+		case "q", "esc":
+			m.peekThreadVisible = false
+			m.peekThreadMessages = nil
+			m.peekThreadTS = ""
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Handle peek main view
+	switch msg.String() {
+	case "q", "esc":
+		// Exit peek mode
+		m.exitPeekMode()
+		return m, nil
+	case "up", "k":
+		if m.peekSelectedIndex > 0 {
+			m.peekSelectedIndex--
+			m.ensurePeekVisible()
+		}
+		return m, nil
+	case "down", "j":
+		if m.peekSelectedIndex < len(m.peekMessages)-1 {
+			m.peekSelectedIndex++
+			m.ensurePeekVisible()
+		}
+		return m, nil
+	case "enter":
+		// View thread
+		if len(m.peekMessages) > 0 && m.peekSelectedIndex < len(m.peekMessages) {
+			selectedMsg := m.peekMessages[m.peekSelectedIndex]
+			threadTS := selectedMsg.Timestamp
+			if selectedMsg.ThreadTS != "" {
+				threadTS = selectedMsg.ThreadTS
+			}
+			m.peekThreadTS = threadTS
+			return m, m.loadPeekThread(threadTS)
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
+// handleNotifyPanelKey handles key events in notification panel
+func (m *LiveModel) handleNotifyPanelKey(msg tea.KeyMsg) (*LiveModel, tea.Cmd) {
+	switch msg.String() {
+	case "q", "esc", "n":
+		m.showNotifyPanel = false
+		return m, nil
+	case "up", "k":
+		if m.notifyPanelIndex > 0 {
+			m.notifyPanelIndex--
+		}
+		return m, nil
+	case "down", "j":
+		if m.notifyPanelIndex < len(m.notifications)-1 {
+			m.notifyPanelIndex++
+		}
+		return m, nil
+	case "enter":
+		// Enter peek mode for selected notification
+		if m.notifyPanelIndex < len(m.notifications) {
+			n := m.notifications[m.notifyPanelIndex]
+			return m, m.enterPeekMode(n.ChannelID, n.ChannelName, n.IsIM)
+		}
+		return m, nil
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		// Quick select by number
+		idx := int(msg.String()[0] - '1')
+		if idx < len(m.notifications) {
+			n := m.notifications[idx]
+			return m, m.enterPeekMode(n.ChannelID, n.ChannelName, n.IsIM)
+		}
+		return m, nil
+	}
 	return m, nil
 }
 
@@ -808,6 +976,51 @@ func (m *LiveModel) ensureVisible() {
 	}
 }
 
+func (m *LiveModel) ensurePeekVisible() {
+	visibleLines := m.getVisibleLines()
+
+	// If selected message is above the scroll offset, scroll up
+	if m.peekSelectedIndex < m.peekScrollOffset {
+		m.peekScrollOffset = m.peekSelectedIndex
+		return
+	}
+
+	// Calculate how many lines are used from scrollOffset to selectedIndex (inclusive)
+	linesUsed := m.getPeekTotalLinesInRange(m.peekScrollOffset, m.peekSelectedIndex+1)
+
+	// If selected message doesn't fit, scroll down
+	if linesUsed > visibleLines {
+		m.peekScrollOffset = m.peekSelectedIndex
+		linesNeeded := m.getPeekMessageLineCount(m.peekSelectedIndex)
+		for m.peekScrollOffset > 0 && linesNeeded < visibleLines {
+			prevLines := m.getPeekMessageLineCount(m.peekScrollOffset - 1)
+			if linesNeeded+prevLines <= visibleLines {
+				m.peekScrollOffset--
+				linesNeeded += prevLines
+			} else {
+				break
+			}
+		}
+	}
+}
+
+func (m *LiveModel) getPeekMessageLineCount(msgIndex int) int {
+	if msgIndex < 0 || msgIndex >= len(m.peekMessages) {
+		return 1
+	}
+	truncate := m.displayConfig.LiveTruncateMessages
+	lines := m.formatMessageLines(m.peekMessages[msgIndex], msgIndex, truncate)
+	return len(lines)
+}
+
+func (m *LiveModel) getPeekTotalLinesInRange(startIdx, endIdx int) int {
+	total := 0
+	for i := startIdx; i < endIdx && i < len(m.peekMessages); i++ {
+		total += m.getPeekMessageLineCount(i)
+	}
+	return total
+}
+
 func (m *LiveModel) getVisibleLines() int {
 	// Reserve space for header (2 lines), input area (2 lines), and help (2 lines)
 	available := m.height - 6
@@ -819,6 +1032,11 @@ func (m *LiveModel) getVisibleLines() int {
 
 // View renders the live UI
 func (m *LiveModel) View() string {
+	// Peek mode has its own view
+	if m.peekMode {
+		return m.renderPeekView()
+	}
+
 	var sb strings.Builder
 
 	// Header
@@ -831,18 +1049,28 @@ func (m *LiveModel) View() string {
 
 	if m.loading {
 		sb.WriteString("\nLoading messages...\n")
+		sb.WriteString(m.renderNotificationBar())
 		sb.WriteString(m.renderHelp())
 		return sb.String()
 	}
 
 	if m.loadingErr != nil {
 		sb.WriteString(fmt.Sprintf("\nError: %v\n", m.loadingErr))
+		sb.WriteString(m.renderNotificationBar())
 		sb.WriteString(m.renderHelp())
 		return sb.String()
 	}
 
 	if len(m.messages) == 0 {
 		sb.WriteString("\nNo messages found.\n")
+		sb.WriteString(m.renderNotificationBar())
+		sb.WriteString(m.renderHelp())
+		return sb.String()
+	}
+
+	// Notification panel overlay
+	if m.showNotifyPanel {
+		sb.WriteString(m.renderNotificationPanel())
 		sb.WriteString(m.renderHelp())
 		return sb.String()
 	}
@@ -881,6 +1109,9 @@ func (m *LiveModel) View() string {
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true).Render("Delete this message? (y/n)"))
 		sb.WriteString("\n")
 	}
+
+	// Notification bar
+	sb.WriteString(m.renderNotificationBar())
 
 	sb.WriteString(m.renderHelp())
 
@@ -1137,6 +1368,223 @@ func (m *LiveModel) renderMentionCandidates() string {
 	return sb.String()
 }
 
+func (m *LiveModel) renderNotificationBar() string {
+	if len(m.notifications) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n")
+	sb.WriteString("─────────────────────────────────────────────────────\n")
+
+	// Show the most recent notification
+	n := m.notifications[len(m.notifications)-1]
+	prefix := "#"
+	if n.IsIM {
+		prefix = "@"
+	}
+
+	// Truncate message preview (use runes for proper multi-byte support)
+	preview := n.LastMessage
+	previewRunes := []rune(preview)
+	if len(previewRunes) > 25 {
+		preview = string(previewRunes[:22]) + "..."
+	}
+
+	// Format: 📨 #channel (count) | @user: message... [n: 確認]
+	totalCount := 0
+	for _, notif := range m.notifications {
+		totalCount += notif.Count
+	}
+
+	barText := fmt.Sprintf("📨 %s%s (%d) | @%s: %s [n: notifications]",
+		prefix, n.ChannelName, totalCount, n.LastUser, preview)
+
+	sb.WriteString(liveNotifyBarStyle.Render(barText))
+	sb.WriteString("\n")
+	sb.WriteString("─────────────────────────────────────────────────────")
+
+	return sb.String()
+}
+
+func (m *LiveModel) renderNotificationPanel() string {
+	var sb strings.Builder
+
+	sb.WriteString("\n")
+	sb.WriteString("┌─ Notifications ")
+	sb.WriteString(strings.Repeat("─", 40))
+	sb.WriteString("┐\n")
+
+	for i, n := range m.notifications {
+		prefix := "#"
+		if n.IsIM {
+			prefix = "@"
+		}
+
+		// Truncate message preview (use runes for proper multi-byte support)
+		preview := n.LastMessage
+		previewRunes := []rune(preview)
+		if len(previewRunes) > 20 {
+			preview = string(previewRunes[:17]) + "..."
+		}
+
+		line := fmt.Sprintf(" %d. %s%-12s (%d) @%s: %s",
+			i+1, prefix, truncateString(n.ChannelName, 12), n.Count, truncateString(n.LastUser, 10), preview)
+
+		if i == m.notifyPanelIndex {
+			sb.WriteString("│" + liveSelectedStyle.Render(padRight(line, 55)) + "│\n")
+		} else {
+			sb.WriteString("│" + liveNormalStyle.Render(padRight(line, 55)) + "│\n")
+		}
+	}
+
+	// Fill empty space if fewer than 5 notifications
+	for i := len(m.notifications); i < 5; i++ {
+		sb.WriteString("│" + strings.Repeat(" ", 55) + "│\n")
+	}
+
+	sb.WriteString("│" + strings.Repeat(" ", 55) + "│\n")
+	sb.WriteString("│ " + liveHelpStyle.Render("[1-9]: peek  Enter: select  j/k: move  q/Esc: back") + " │\n")
+	sb.WriteString("└")
+	sb.WriteString(strings.Repeat("─", 55))
+	sb.WriteString("┘")
+
+	return sb.String()
+}
+
+func (m *LiveModel) renderPeekView() string {
+	var sb strings.Builder
+
+	// Header showing peek mode
+	prefix := "#"
+	if m.peekIsIM {
+		prefix = "@"
+	}
+	header := fmt.Sprintf("Live #%s → Peek %s%s (read-only)", m.originalChannelName, prefix, m.peekChannelName)
+	sb.WriteString(livePeekHeaderStyle.Render(header))
+	sb.WriteString("\n")
+
+	if m.peekLoading {
+		sb.WriteString("\nLoading messages...\n")
+		sb.WriteString(m.renderPeekHelp())
+		return sb.String()
+	}
+
+	if m.peekLoadingErr != nil {
+		sb.WriteString(fmt.Sprintf("\nError: %v\n", m.peekLoadingErr))
+		sb.WriteString(m.renderPeekHelp())
+		return sb.String()
+	}
+
+	if len(m.peekMessages) == 0 {
+		sb.WriteString("\nNo messages found.\n")
+		sb.WriteString(m.renderPeekHelp())
+		return sb.String()
+	}
+
+	// Thread view in peek mode
+	if m.peekThreadVisible {
+		sb.WriteString(m.renderPeekThread())
+	} else {
+		// Main message list in peek mode
+		sb.WriteString(m.renderPeekMessageList())
+	}
+
+	sb.WriteString(m.renderPeekHelp())
+	return sb.String()
+}
+
+func (m *LiveModel) renderPeekMessageList() string {
+	var sb strings.Builder
+
+	visibleLines := m.getVisibleLines()
+	truncate := m.displayConfig.LiveTruncateMessages
+
+	// Render messages starting from scrollOffset, counting lines
+	linesRendered := 0
+	endIdx := m.peekScrollOffset
+
+	for i := m.peekScrollOffset; i < len(m.peekMessages) && linesRendered < visibleLines; i++ {
+		msg := m.peekMessages[i]
+		lines := m.formatMessageLines(msg, i, truncate)
+
+		for _, line := range lines {
+			if linesRendered >= visibleLines {
+				break
+			}
+
+			if i == m.peekSelectedIndex {
+				sb.WriteString(liveSelectedStyle.Render(line))
+			} else {
+				sb.WriteString(liveNormalStyle.Render(line))
+			}
+			sb.WriteString("\n")
+			linesRendered++
+		}
+		endIdx = i + 1
+	}
+
+	// Scroll indicator
+	totalMessages := len(m.peekMessages)
+	if totalMessages > 0 {
+		sb.WriteString(fmt.Sprintf("\n[%d-%d of %d messages]",
+			m.peekScrollOffset+1, endIdx, totalMessages))
+	}
+
+	return sb.String()
+}
+
+func (m *LiveModel) renderPeekThread() string {
+	var sb strings.Builder
+
+	if len(m.peekThreadMessages) == 0 {
+		sb.WriteString("\nNo replies in this thread.\n")
+		return sb.String()
+	}
+
+	sb.WriteString("\n")
+	for i, msg := range m.peekThreadMessages {
+		lines := m.formatMessageLines(msg, i, false)
+		for _, line := range lines {
+			if i == 0 {
+				sb.WriteString(liveNormalStyle.Render(line))
+			} else {
+				sb.WriteString(liveThreadStyle.Render("  " + line))
+			}
+			sb.WriteString("\n")
+		}
+	}
+
+	return sb.String()
+}
+
+func (m *LiveModel) renderPeekHelp() string {
+	var help string
+	if m.peekThreadVisible {
+		help = "q/Esc: back to peek list"
+	} else {
+		help = "j/k: move | Enter: view thread | q/Esc: back to #" + m.originalChannelName
+	}
+	return "\n" + liveHelpStyle.Render(help)
+}
+
+// Helper functions for string formatting
+func truncateString(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) > maxLen {
+		return string(runes[:maxLen-1]) + "…"
+	}
+	return s
+}
+
+func padRight(s string, length int) string {
+	runes := []rune(s)
+	if len(runes) >= length {
+		return string(runes[:length])
+	}
+	return s + strings.Repeat(" ", length-len(runes))
+}
+
 func (m *LiveModel) renderHelp() string {
 	var help string
 	if m.deleteConfirm {
@@ -1151,10 +1599,16 @@ func (m *LiveModel) renderHelp() string {
 		} else {
 			help = "Enter: send | Shift+Enter: newline | Esc: cancel"
 		}
+	} else if m.showNotifyPanel {
+		help = "[1-9]: peek | Enter: select | j/k: move | q/Esc: close"
 	} else if m.threadVisible {
 		help = "r: reply | q/Esc: back | j/k: scroll"
 	} else {
-		help = "i: new message | Enter: thread | r: reply | e: edit | d: delete | R: reload | j/k: nav | q: exit"
+		help = "i: message | Enter: thread | r: reply | e: edit | d: delete | R: reload | j/k: nav"
+		if len(m.notifications) > 0 {
+			help += " | n: notifications"
+		}
+		help += " | q: exit"
 	}
 	return "\n" + liveHelpStyle.Render(help)
 }
@@ -1192,6 +1646,39 @@ func (m *LiveModel) AddIncomingMessage(channelID, userID, userName, text, timest
 	}
 }
 
+// AddPeekIncomingMessage adds a message to the peek view if in peek mode
+func (m *LiveModel) AddPeekIncomingMessage(channelID, userID, userName, text, timestamp, threadTS string) {
+	// Only add if in peek mode and message is for the peek channel
+	if !m.peekMode || channelID != m.peekChannelID {
+		return
+	}
+
+	// Create a new message
+	newMsg := slack.Message{
+		Timestamp: timestamp,
+		User:      userID,
+		UserName:  userName,
+		Text:      text,
+		ThreadTS:  threadTS,
+	}
+
+	// If this is a thread reply to the currently viewed peek thread
+	if m.peekThreadVisible && threadTS != "" && threadTS == m.peekThreadTS {
+		m.peekThreadMessages = append(m.peekThreadMessages, newMsg)
+		return
+	}
+
+	// If this is a main channel message
+	if threadTS == "" || threadTS == timestamp {
+		m.peekMessages = append(m.peekMessages, newMsg)
+		// Auto-scroll to the newest message if already at the bottom
+		if m.peekSelectedIndex == len(m.peekMessages)-2 {
+			m.peekSelectedIndex = len(m.peekMessages) - 1
+			m.ensurePeekVisible()
+		}
+	}
+}
+
 // GetChannelID returns the channel ID for this live model
 func (m *LiveModel) GetChannelID() string {
 	return m.channelID
@@ -1199,8 +1686,9 @@ func (m *LiveModel) GetChannelID() string {
 
 // ShouldExit returns true if the user wants to exit live mode
 func (m *LiveModel) ShouldExit(msg tea.KeyMsg) bool {
-	// Only exit on 'q' when not in input mode, not in thread view, and not confirming delete
-	if m.inputMode != InputModeNone || m.threadVisible || m.deleteConfirm {
+	// Only exit on 'q' when not in input mode, not in thread view, not confirming delete,
+	// not in peek mode, and not showing notification panel
+	if m.inputMode != InputModeNone || m.threadVisible || m.deleteConfirm || m.peekMode || m.showNotifyPanel {
 		return false
 	}
 	return msg.String() == "q"
@@ -1219,4 +1707,145 @@ func (m *LiveModel) IsThreadVisible() bool {
 // IsDeleteConfirm returns true if delete confirmation is shown
 func (m *LiveModel) IsDeleteConfirm() bool {
 	return m.deleteConfirm
+}
+
+// AddNotification adds or updates a notification from another channel
+func (m *LiveModel) AddNotification(item NotificationItem) {
+	// Check if notification for this channel already exists
+	for i, n := range m.notifications {
+		if n.ChannelID == item.ChannelID {
+			m.notifications[i].Count++
+			m.notifications[i].LastMessage = item.LastMessage
+			m.notifications[i].LastUser = item.LastUser
+			return
+		}
+	}
+	// Add new notification
+	item.Count = 1
+	m.notifications = append(m.notifications, item)
+}
+
+// ClearNotification removes a notification for a specific channel
+func (m *LiveModel) ClearNotification(channelID string) {
+	for i, n := range m.notifications {
+		if n.ChannelID == channelID {
+			m.notifications = append(m.notifications[:i], m.notifications[i+1:]...)
+			return
+		}
+	}
+}
+
+// HasNotifications returns true if there are pending notifications
+func (m *LiveModel) HasNotifications() bool {
+	return len(m.notifications) > 0
+}
+
+// IsPeekMode returns true if live model is in peek mode
+func (m *LiveModel) IsPeekMode() bool {
+	return m.peekMode
+}
+
+// IsNotifyPanelVisible returns true if notification panel is visible
+func (m *LiveModel) IsNotifyPanelVisible() bool {
+	return m.showNotifyPanel
+}
+
+// PeekMessagesLoadedMsg is sent when peek mode messages are loaded
+type PeekMessagesLoadedMsg struct {
+	Messages []slack.Message
+	HasMore  bool
+	Err      error
+}
+
+// PeekThreadLoadedMsg is sent when peek mode thread is loaded
+type PeekThreadLoadedMsg struct {
+	Messages []slack.Message
+	Err      error
+}
+
+// PeekModeEnteredMsg is sent when entering peek mode
+type PeekModeEnteredMsg struct {
+	ChannelID string
+}
+
+func (m *LiveModel) loadPeekMessages() tea.Cmd {
+	return func() tea.Msg {
+		result, err := m.client.GetMessagesWithPagination(m.peekChannelID, 50, "")
+		if err != nil {
+			return PeekMessagesLoadedMsg{Messages: nil, HasMore: false, Err: err}
+		}
+		// Resolve user names
+		m.resolveUserNames(result.Messages)
+		return PeekMessagesLoadedMsg{Messages: result.Messages, HasMore: result.HasMore, Err: nil}
+	}
+}
+
+func (m *LiveModel) loadPeekThread(threadTS string) tea.Cmd {
+	return func() tea.Msg {
+		messages, err := m.client.GetThreadReplies(m.peekChannelID, threadTS)
+		if err == nil {
+			m.resolveUserNames(messages)
+		}
+		return PeekThreadLoadedMsg{Messages: messages, Err: err}
+	}
+}
+
+// enterPeekMode enters peek mode for the specified channel
+func (m *LiveModel) enterPeekMode(channelID, channelName string, isIM bool) tea.Cmd {
+	// Save original state
+	m.originalChannelID = m.channelID
+	m.originalChannelName = m.channelName
+	m.originalMessages = m.messages
+	m.originalScrollOffset = m.scrollOffset
+	m.originalSelectedIndex = m.selectedIndex
+
+	// Set up peek mode
+	m.peekMode = true
+	m.peekChannelID = channelID
+	m.peekChannelName = channelName
+	m.peekIsIM = isIM
+	m.peekLoading = true
+	m.peekLoadingErr = nil
+	m.peekMessages = nil
+	m.peekSelectedIndex = 0
+	m.peekScrollOffset = 0
+	m.peekThreadVisible = false
+	m.showNotifyPanel = false
+
+	// Clear the notification for this channel
+	m.ClearNotification(channelID)
+
+	// Send notification to parent model to clear unread, and load messages
+	return tea.Batch(
+		func() tea.Msg {
+			return PeekModeEnteredMsg{ChannelID: channelID}
+		},
+		m.loadPeekMessages(),
+	)
+}
+
+// exitPeekMode exits peek mode and restores original state
+func (m *LiveModel) exitPeekMode() {
+	m.peekMode = false
+	m.peekChannelID = ""
+	m.peekChannelName = ""
+	m.peekMessages = nil
+	m.peekThreadVisible = false
+	m.peekThreadMessages = nil
+	m.peekLoading = false
+	m.peekLoadingErr = nil
+
+	// Restore original state
+	m.messages = m.originalMessages
+	m.scrollOffset = m.originalScrollOffset
+	m.selectedIndex = m.originalSelectedIndex
+	m.originalMessages = nil
+}
+
+// GetPeekChannelID returns the peek channel ID if in peek mode
+func (m *LiveModel) GetPeekChannelID() string {
+	if m.peekMode {
+		return m.peekChannelID
+	}
+	return ""
 }

@@ -227,11 +227,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	// Handle live mode messages
-	case LiveMessagesLoadedMsg, LiveThreadLoadedMsg, LiveMessageSentMsg, LiveReplySentMsg, LiveOlderMessagesLoadedMsg, LiveMembersLoadedMsg:
+	case LiveMessagesLoadedMsg, LiveThreadLoadedMsg, LiveMessageSentMsg, LiveReplySentMsg, LiveOlderMessagesLoadedMsg, LiveMembersLoadedMsg, PeekMessagesLoadedMsg, PeekThreadLoadedMsg:
 		if m.liveMode && m.liveModel != nil {
 			m.liveModel, cmd = m.liveModel.Update(msg)
 			return m, cmd
 		}
+
+	// Handle peek mode entered - clear unread from notification manager
+	case PeekModeEnteredMsg:
+		if m.notificationManager != nil {
+			m.notificationManager.ClearUnread(msg.ChannelID)
+		}
+		return m, nil
 
 	// Handle browse mode messages
 	case MessagesLoadedMsg, ThreadLoadedMsg, ReplySentMsg:
@@ -246,14 +253,47 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle live mode - add message to live view
 		if m.liveMode && m.liveModel != nil {
-			m.liveModel.AddIncomingMessage(
-				slackMsg.ChannelID,
-				slackMsg.UserID,
-				userName,
-				slackMsg.Text,
-				slackMsg.Timestamp,
-				slackMsg.ThreadTS,
-			)
+			// If message is for the current live channel, add it to the view
+			if slackMsg.ChannelID == m.liveModel.GetChannelID() {
+				m.liveModel.AddIncomingMessage(
+					slackMsg.ChannelID,
+					slackMsg.UserID,
+					userName,
+					slackMsg.Text,
+					slackMsg.Timestamp,
+					slackMsg.ThreadTS,
+				)
+			} else if m.liveModel.IsPeekMode() && slackMsg.ChannelID == m.liveModel.GetPeekChannelID() {
+				// Message is for the peek channel - add it to peek view
+				m.liveModel.AddPeekIncomingMessage(
+					slackMsg.ChannelID,
+					slackMsg.UserID,
+					userName,
+					slackMsg.Text,
+					slackMsg.Timestamp,
+					slackMsg.ThreadTS,
+				)
+			} else if slackMsg.UserID != m.executor.GetCurrentUserID() {
+				// Message from another channel - add as notification
+				// (skip self messages to avoid notification loops)
+				channelName := m.executor.GetChannelName(slackMsg.ChannelID)
+				isIM := m.executor.IsIMChannel(slackMsg.ChannelID)
+
+				// Truncate message for preview (use runes for proper multi-byte support)
+				preview := slackMsg.Text
+				previewRunes := []rune(preview)
+				if len(previewRunes) > 30 {
+					preview = string(previewRunes[:27]) + "..."
+				}
+
+				m.liveModel.AddNotification(NotificationItem{
+					ChannelID:   slackMsg.ChannelID,
+					ChannelName: channelName,
+					IsIM:        isIM,
+					LastMessage: preview,
+					LastUser:    userName,
+				})
+			}
 		}
 
 		// Handle browse mode - add message to browse view
