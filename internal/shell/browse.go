@@ -439,6 +439,37 @@ func (m *BrowseModel) renderHelp() string {
 	return "\n" + browseHelpStyle.Render(help)
 }
 
+// RemoveDeletedMessage removes a message that was deleted via realtime events
+func (m *BrowseModel) RemoveDeletedMessage(channelID, deletedTimestamp string) {
+	// Only remove if it's for this channel
+	if channelID != m.channelID {
+		return
+	}
+
+	// Remove from main message list
+	for i, msg := range m.messages {
+		if msg.Timestamp == deletedTimestamp {
+			m.messages = append(m.messages[:i], m.messages[i+1:]...)
+			// Adjust selected index if necessary
+			if m.selectedIndex >= len(m.messages) && m.selectedIndex > 0 {
+				m.selectedIndex--
+			}
+			m.ensureVisible()
+			break
+		}
+	}
+
+	// Also remove from thread messages if thread is visible
+	if m.threadVisible {
+		for i, msg := range m.threadMessages {
+			if msg.Timestamp == deletedTimestamp {
+				m.threadMessages = append(m.threadMessages[:i], m.threadMessages[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
 // AddIncomingMessage adds a new message from realtime events
 func (m *BrowseModel) AddIncomingMessage(channelID, userID, userName, text, timestamp, threadTS string) {
 	// Only add if it's for this channel

@@ -333,6 +333,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.notificationManager.HandleMessage(notifyMsg, currentChannelID, m.browseMode || m.liveMode)
 		}
 		return m, nil
+
+	case DeletedMessageMsg:
+		deletedMsg := slack.DeletedMessage(msg)
+
+		// Handle live mode - remove message from live view
+		if m.liveMode && m.liveModel != nil {
+			if deletedMsg.ChannelID == m.liveModel.GetChannelID() {
+				m.liveModel.RemoveDeletedMessage(deletedMsg.ChannelID, deletedMsg.DeletedTimestamp)
+			} else if m.liveModel.IsPeekMode() && deletedMsg.ChannelID == m.liveModel.GetPeekChannelID() {
+				m.liveModel.RemovePeekDeletedMessage(deletedMsg.ChannelID, deletedMsg.DeletedTimestamp)
+			}
+		}
+
+		// Handle browse mode - remove message from browse view
+		if m.browseMode && m.browseModel != nil {
+			m.browseModel.RemoveDeletedMessage(deletedMsg.ChannelID, deletedMsg.DeletedTimestamp)
+		}
+		return m, nil
 	}
 
 	if !m.browseMode && !m.liveMode {
@@ -649,6 +667,10 @@ func (m *Model) HandleRealtimeEvent(event interface{}) tea.Cmd {
 		return func() tea.Msg {
 			return IncomingMessageMsg(e)
 		}
+	case slack.DeletedMessage:
+		return func() tea.Msg {
+			return DeletedMessageMsg(e)
+		}
 	case string:
 		if e == "connected" {
 			return func() tea.Msg {
@@ -665,6 +687,9 @@ func (m *Model) HandleRealtimeEvent(event interface{}) tea.Cmd {
 
 // IncomingMessageMsg is a message type for incoming Slack messages
 type IncomingMessageMsg slack.IncomingMessage
+
+// DeletedMessageMsg is a message type for deleted Slack messages
+type DeletedMessageMsg slack.DeletedMessage
 
 // ConnectionStatusMsg is a message type for connection status changes
 type ConnectionStatusMsg struct {

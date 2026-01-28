@@ -1613,6 +1613,68 @@ func (m *LiveModel) renderHelp() string {
 	return "\n" + liveHelpStyle.Render(help)
 }
 
+// RemoveDeletedMessage removes a message that was deleted via realtime events
+func (m *LiveModel) RemoveDeletedMessage(channelID, deletedTimestamp string) {
+	// Only remove if it's for this channel
+	if channelID != m.channelID {
+		return
+	}
+
+	// Remove from main message list
+	for i, msg := range m.messages {
+		if msg.Timestamp == deletedTimestamp {
+			m.messages = append(m.messages[:i], m.messages[i+1:]...)
+			// Adjust selected index if necessary
+			if m.selectedIndex >= len(m.messages) && m.selectedIndex > 0 {
+				m.selectedIndex--
+			}
+			m.ensureVisible()
+			break
+		}
+	}
+
+	// Also remove from thread messages if thread is visible
+	if m.threadVisible {
+		for i, msg := range m.threadMessages {
+			if msg.Timestamp == deletedTimestamp {
+				m.threadMessages = append(m.threadMessages[:i], m.threadMessages[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
+// RemovePeekDeletedMessage removes a message from peek view that was deleted via realtime events
+func (m *LiveModel) RemovePeekDeletedMessage(channelID, deletedTimestamp string) {
+	// Only remove if in peek mode and message is for the peek channel
+	if !m.peekMode || channelID != m.peekChannelID {
+		return
+	}
+
+	// Remove from peek message list
+	for i, msg := range m.peekMessages {
+		if msg.Timestamp == deletedTimestamp {
+			m.peekMessages = append(m.peekMessages[:i], m.peekMessages[i+1:]...)
+			// Adjust selected index if necessary
+			if m.peekSelectedIndex >= len(m.peekMessages) && m.peekSelectedIndex > 0 {
+				m.peekSelectedIndex--
+			}
+			m.ensurePeekVisible()
+			break
+		}
+	}
+
+	// Also remove from peek thread messages if peek thread is visible
+	if m.peekThreadVisible {
+		for i, msg := range m.peekThreadMessages {
+			if msg.Timestamp == deletedTimestamp {
+				m.peekThreadMessages = append(m.peekThreadMessages[:i], m.peekThreadMessages[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
 // AddIncomingMessage adds a new message from realtime events
 func (m *LiveModel) AddIncomingMessage(channelID, userID, userName, text, timestamp, threadTS string) {
 	// Only add if it's for this channel

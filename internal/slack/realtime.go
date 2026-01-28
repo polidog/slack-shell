@@ -30,6 +30,12 @@ type IncomingMessage struct {
 	ThreadTS  string
 }
 
+// DeletedMessage represents a message that was deleted
+type DeletedMessage struct {
+	ChannelID        string
+	DeletedTimestamp string
+}
+
 func NewRealtimeClient(slackClient *Client, appToken string, handler EventHandler, debug bool) *RealtimeClient {
 	// Create a new Slack client with app token for socket mode
 	opts := []slack.Option{
@@ -97,9 +103,31 @@ func (r *RealtimeClient) handleEvents() {
 				switch innerEvent := eventsAPIEvent.InnerEvent.Data.(type) {
 				case *slackevents.MessageEvent:
 					if r.debug {
-						fmt.Fprintf(os.Stderr, "[DEBUG] Message event: channel=%s user=%s text=%s\n",
-							innerEvent.Channel, innerEvent.User, innerEvent.Text)
+						fmt.Fprintf(os.Stderr, "[DEBUG] Message event: channel=%s user=%s text=%s subtype=%s\n",
+							innerEvent.Channel, innerEvent.User, innerEvent.Text, innerEvent.SubType)
 					}
+
+					// Handle message_deleted subtype
+					if innerEvent.SubType == "message_deleted" {
+						if r.debug {
+							fmt.Fprintf(os.Stderr, "[DEBUG] Message deleted: channel=%s deleted_ts=%s\n",
+								innerEvent.Channel, innerEvent.PreviousMessage.Timestamp)
+						}
+						deletedMsg := DeletedMessage{
+							ChannelID:        innerEvent.Channel,
+							DeletedTimestamp: innerEvent.PreviousMessage.Timestamp,
+						}
+						if r.eventHandler != nil {
+							r.eventHandler(deletedMsg)
+						}
+						continue
+					}
+
+					// Skip other subtypes that don't represent new messages
+					if innerEvent.SubType != "" && innerEvent.SubType != "bot_message" {
+						continue
+					}
+
 					msg := IncomingMessage{
 						ChannelID: innerEvent.Channel,
 						UserID:    innerEvent.User,
