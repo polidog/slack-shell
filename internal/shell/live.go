@@ -440,8 +440,8 @@ func (m *LiveModel) completeMention() {
 		return
 	}
 
-	// Replace @prefix with @username
-	newText := string(runes[:mentionStart]) + "@" + candidate.UserName + " "
+	// Replace @prefix with <@USER_ID> format for Slack mention
+	newText := string(runes[:mentionStart]) + "<@" + candidate.UserID + "> "
 
 	m.inputText.SetValue(newText)
 	// Move cursor to end
